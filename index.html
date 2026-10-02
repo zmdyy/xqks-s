@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>学情可视化展板</title>
+    <link rel="stylesheet" href="app.css">
+    <script src="app-core.js"></script>
     <script src="echarts.min.js"></script>
     <script src="xlsx.full.min.js"></script>
     <script>if(typeof echarts==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js';document.head.appendChild(s)}if(typeof XLSX==='undefined'){var s2=document.createElement('script');s2.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';document.head.appendChild(s2)}</script>
@@ -14,834 +16,10 @@
     <script src="auto-render.min.js"></script>
     <script src="jszip.min.js"></script>
     <script src="mathml2omml.js"></script>
-    <script src="notebook-docx.js?v=14"></script>
-    <style>
-        /* ── Design System ──────────────────────────── */
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        :root {
-            --primary: #1c3d5c;
-            --primary-light: #2d5980;
-            --primary-dark: #0f283d;
-            --danger: #b91c1c;
-            --danger-light: #ef4444;
-            --success: #047857;
-            --success-light: #10b981;
-            --warning: #b45309;
-            --warning-light: #d97706;
-            --highlight: #fef3c7;
-            --search-hl: #fde047;
-            --surface: #ffffff;
-            --bg: #f4f5f7;
-            --bg-card: #f8fafc;
-            --text-primary: #1a1a2e;
-            --text-secondary: #4a4a5a;
-            --text-tertiary: #9ca3af;
-            --border: #e5e7eb;
-            --border-light: #f3f4f6;
-            --shadow-sm: 0 1px 2px rgba(0,0,0,.04);
-            --shadow: 0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-            --shadow-md: 0 4px 6px -1px rgba(0,0,0,.07),0 2px 4px -1px rgba(0,0,0,.04);
-            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,.08),0 4px 6px -2px rgba(0,0,0,.04);
-            --radius: 10px;
-            --radius-sm: 6px;
-            --radius-xs: 4px;
-            --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif;
-            --transition: 150ms ease;
-        }
-        body {
-            background: var(--bg); color: var(--text-primary);
-            font-family: var(--font); line-height: 1.6; padding: 20px; padding-bottom: 52px;
-            -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
-        }
-        .container { max-width: 1600px; margin: 0 auto; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 28px; }
-        h1 { text-align: center; margin-bottom: 20px; color: var(--primary); padding-bottom: 14px; font-size: 1.5rem; font-weight: 700; letter-spacing: .04em; border-bottom: 2px solid var(--border); }
-        .tab-nav { display: flex; gap: 2px; margin-bottom: 24px; background: var(--bg); border-radius: var(--radius); padding: 4px; }
-        .tab-nav button { flex: 1; padding: 10px 14px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-tertiary); transition: var(--transition); position: relative; }
-        .tab-nav button.active { background: var(--surface); color: var(--primary); box-shadow: var(--shadow); }
-        .tab-nav button:hover:not(.active) { color: var(--text-secondary); background: rgba(255,255,255,.6); }
+    <script src="notebook-docx.js?v=15"></script>
 
-        .tab-panel { display: none; }
-        .tab-panel.active { display: block; animation: fadeIn .15s ease; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        .upload-area-container { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-        .upload-section { flex: 1 1 30%; background: var(--bg); border: 2px dashed var(--primary); border-radius: var(--radius); padding: 18px; min-width: 260px; transition: var(--transition); }
-        .upload-section:hover { border-color: var(--primary-light); background: #f8faff; }
-        .upload-section.sub { border-color: var(--warning); }
-        .upload-section.sub:hover { border-color: var(--warning-light); background: #fffbeb; }
-        .upload-section.pdf { border-color: #7c3aed; }
-        .upload-section.pdf:hover { border-color: #8b5cf6; background: #f5f3ff; }
-        .upload-section h3 { margin-bottom: 10px; font-size: .9em; color: var(--text-primary); font-weight: 600; }
-        .upload-btn { background: var(--primary); color: #fff; border: none; padding: 8px 18px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 600; transition: var(--transition); display: inline-flex; align-items: center; gap: 4px; }
-        .upload-btn:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: var(--shadow-md); }
-        .upload-btn:active { transform: translateY(0); }
-        .upload-btn.small { padding: 5px 12px; font-size: 12px; }
-        .upload-btn.danger { background: var(--danger); }
-        .upload-btn.danger:hover { background: #c1121f; }
-        .file-input { display: none; }
-        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--text-primary); color: #fff; padding: 12px 20px; border-radius: var(--radius); font-size: 13px; z-index: 9999; opacity: 0; transform: translateY(12px); transition: opacity .3s, transform .3s; pointer-events: none; max-width: 340px; box-shadow: var(--shadow-lg); }
-        .toast.show { opacity: 1; transform: translateY(0); }
-        .analysis-back-to-top { position:fixed; right:24px; bottom:82px; z-index:900; width:78px; height:78px; padding:9px 8px 8px; border:1px solid #e5e7eb; border-radius:50%; background:rgba(255,255,255,.97); color:#111827; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:15px; font-weight:600; line-height:1; letter-spacing:0; box-shadow:0 2px 10px rgba(15,23,42,.08); cursor:pointer; opacity:0; visibility:hidden; pointer-events:none; transform:translateY(8px); transition:opacity .18s ease,transform .18s ease,visibility .18s ease,background-color .18s ease,border-color .18s ease; }
-        .analysis-back-to-top-icon { width:34px; height:34px; display:block; fill:none; stroke:currentColor; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; flex:0 0 auto; }
-        .analysis-back-to-top.is-visible { opacity:1; visibility:visible; pointer-events:auto; transform:translateY(0); }
-        .analysis-back-to-top:hover { background:#f8fafc; border-color:#cbd5e1; transform:translateY(-2px); }
-        .analysis-back-to-top:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
-        @media (max-width:640px) { .analysis-back-to-top { right:14px; bottom:70px; width:70px; height:70px; font-size:14px; } .analysis-back-to-top-icon { width:30px; height:30px; } }
-        @media print { .analysis-back-to-top { display:none !important; } }
-        .toast.success { background: var(--success); }
-        .toast.info { background: var(--primary); }
-        .file-list { list-style: none; padding: 0; max-height: 160px; overflow-y: auto; margin-top: 8px; }
-        .file-list li { background: var(--surface); padding: 6px 10px; border-radius: var(--radius-sm); margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; border: 1px solid var(--border); border-left: 4px solid var(--success); }
-        .file-list li span { color: var(--text-tertiary); font-size: 11px; }
-        .file-list li button { background: var(--danger); color: #fff; border: none; padding: 3px 9px; border-radius: var(--radius-xs); cursor: pointer; font-size: 11px; font-weight: 600; transition: var(--transition); }
-        .file-list li button:hover { background: #c1121f; }
-        .batch-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 12px 18px; background: var(--bg-card); border-radius: var(--radius); border: 1px solid var(--border); flex-wrap: wrap; }
-        .batch-bar label { font-weight: 600; color: var(--primary); font-size: 13px; }
-        .batch-bar select { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 13px; min-width: 160px; background: var(--surface); }
-        .batch-bar input { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 13px; width: 140px; background: var(--surface); }
-        .controls { display: flex; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-        .control-group { display: flex; align-items: center; gap: 8px; }
-        .control-group label { font-weight: 600; font-size: 13px; color: var(--text-secondary); }
-        .control-group input, .control-group select { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 13px; background: var(--surface); transition: var(--transition); }
-        .control-group input:focus, .control-group select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(30,58,95,.12); }
-        .control-group input[type=number] { width: 65px; }
-        .filter-btn { background: var(--success); color: #fff; border: none; padding: 8px 18px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 600; transition: var(--transition); }
-        .filter-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); opacity: .95; }
-        .filter-btn:active { transform: translateY(0); }
-        .results-section { margin-top: 20px; overflow-x: auto; }
-        .ai-analysis-container { margin-bottom: 20px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: var(--radius); overflow-x: auto; }
-        .ai-analysis-container h3 { color: var(--primary); margin-bottom: 8px; font-size: .95rem; }
-        .ai-analysis-container pre { white-space: pre-wrap; word-wrap: break-word; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; max-height: 400px; overflow-y: scroll; line-height: 1.7; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { padding: 8px 6px; text-align: center; border: 1px solid var(--border); font-size: 12px; }
-        th { background: var(--primary); color: #fff; position: sticky; top: 0; z-index: 10; font-weight: 600; letter-spacing: .01em; }
-        tr:nth-child(even) { background: #f8fafc; }
-        tr:hover { background: #eef2ff; transition: background .15s; }
-        .search-highlight { background: var(--search-hl) !important; font-weight: bold !important; border: 2px solid var(--warning); }
-        .no-data { text-align: center; padding: 40px 20px; color: var(--text-tertiary); font-size: 15px; }
-        .highlight { background: #fef2f2 !important; color: var(--danger) !important; font-weight: 700; }
-        .header-format { font-size: 10px; color: rgba(255,255,255,.7); font-weight: normal; }
-        .rank-display { font-weight: 700; font-size: 12px; }
-        .score-display { font-size: 15px; color: var(--primary); font-weight: 700; }
-        .info-section { background: var(--bg); border-left: 4px solid var(--primary); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 12px; font-size: 13px; line-height: 1.8; }
-        .scroll-container { max-height: 450px; overflow-y: auto; margin-bottom: 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
-        .scroll-container::-webkit-scrollbar { width: 6px; height: 6px; }
-        .scroll-container::-webkit-scrollbar-track { background: transparent; }
-        .scroll-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        .scroll-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        .statistics-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 20px 6px 20px; margin-bottom: 8px; box-shadow: var(--shadow-sm); transition: box-shadow .2s; }
-        .filter-stats-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; background: var(--bg); border-radius: var(--radius-sm); padding: 10px 16px; border: 1px solid var(--border); }
-        .filter-bar-item { display: flex; align-items: center; gap: 6px; }
-        .filter-bar-label { font-weight: 600; color: var(--primary); font-size: 13px; letter-spacing: .02em; }
-        .filter-bar-select, .filter-bar-input { padding: 6px 10px; font-size: 13px; border-radius: var(--radius-xs); border: 1px solid var(--border); background: var(--surface); transition: var(--transition); }
-        .filter-bar-select:focus, .filter-bar-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(30,58,95,.1); }
-        .student-ans-wrong { background: #fef2f2; color: var(--danger); border-radius: 4px; padding: 2px 7px; font-weight: 700; }
-        .collective-correct-option { background: #dcfce7; color: #15803d; border-radius: 4px; padding: 2px 5px; font-weight: 700; }
-        .student-search-group { position: relative; display: inline-block; }
-        .student-search-group input[data-student-search-bound] { padding-right:24px; }
-        .student-search-toggle { position:absolute; right:2px; top:50%; transform:translateY(-50%); width:20px; height:24px; border:0; background:transparent; color:var(--text-secondary); cursor:pointer; padding:0; font-size:11px; line-height:24px; z-index:2; }
-        .student-search-toggle:hover { color:var(--primary); }
-        .student-suggest { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); max-height: 210px; overflow-y: auto; position: absolute; z-index: 1000; min-width: 180px; width: 100%; box-shadow: var(--shadow-lg); }
-        .student-suggest-item { padding: 7px 12px; cursor: pointer; font-size: 13px; transition: background .15s; line-height: 1.35; }
-        .student-suggest-item:hover, .student-suggest-item.active { background: var(--primary); color: #fff; }
-        .student-suggest-item.empty { color: #999; cursor: default; }
-        .student-suggest-item.empty:hover { background: transparent; color: #999; }
-        .student-suggest-name { font-weight: 600; }
-        .student-suggest-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
-        .student-suggest-item:hover .student-suggest-meta, .student-suggest-item.active .student-suggest-meta { color: rgba(255,255,255,.82); }
-        .level-bar { margin: 16px 0; display: flex; align-items: center; gap: 10px; background: var(--bg-card); border-radius: var(--radius-sm); padding: 10px 16px; border: 1px solid var(--border); flex-wrap: wrap; }
-        .level-bar label { font-weight: 600; font-size: 13px; color: var(--text-secondary); }
-        .level-bar input { width: 55px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-xs); }
-        .rank-bar { margin: 16px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .rank-range-box { background: var(--bg-card); border-radius: var(--radius-sm); padding: 10px 16px; border: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
-        .rank-bar label { font-weight: 600; color: var(--text-secondary); font-size: 13px; }
-        .rank-bar input { width: 55px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-xs); }
-        .batch-info-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; padding: 12px 18px; background: var(--bg-card); border-radius: var(--radius); border: 1px solid var(--border); font-size: 14px; font-weight: 600; color: var(--text-primary); }
-        .batch-info-bar .batch-icon { font-size: 18px; }
-        .batch-info-bar .batch-label { color: var(--primary); }
-        .batch-info-bar .batch-count { color: var(--text-tertiary); font-size: 12px; font-weight: normal; }
-        .trend-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; padding: 10px 16px; background: var(--bg-card); border-radius: var(--radius-sm); font-size: 13px; }
-        .controls-panel { margin-bottom: 8px; }
-        .top-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; padding: 6px 0; }
-        .top-title { font-size: 1.1rem; color: var(--text-primary); font-weight: 700; white-space: nowrap; }
-        .search-section, #tab-trend .customization-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 10px 14px; background: var(--bg-card); border-radius: var(--radius); flex-wrap: wrap; }
-        .student-info { text-align: center; padding: 6px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
-        .student-name { font-size: 24px; color: var(--primary); font-weight: 700; }
-        .main-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
-        .main-charts .chart-box { width: 100%; min-width: 0; }
-        .chart-box { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); padding: 12px; display: flex; flex-direction: column; transition: var(--transition); }
-        .chart-box:hover { box-shadow: var(--shadow-md); }
-        .chart-title { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; margin-top: 2px; text-align: center; font-weight: 600; flex-shrink: 0; letter-spacing: .02em; }
-        .subject-chart-box .chart-title { font-size: 12px; margin-bottom: 4px; margin-top: 2px; }
-        .echarts-container { width: 100%; flex-grow: 1; }
-        #totalRankChartContainer { height: 240px; }
-        #radarChartContainer { height: 240px; }
-        .subject-ranks-container { grid-column: 1 / -1; padding: 10px; }
-        .subjects-charts { display: grid; grid-template-columns: repeat(2,1fr); gap: 14px; }
-        .subject-chart-box { height: 200px; display: flex; flex-direction: column; min-width: 0; }
-        .trend-svg-print-root { display:none; }
-        .trend-print-sheet {
-            width: 190mm;
-            height: 267mm;
-            margin: 0 auto;
-            padding: 0;
-            box-sizing: border-box;
-            background: #fff;
-            color: #111827;
-            page-break-after: always;
-            break-after: page;
-            overflow: hidden;
-            display: grid;
-            grid-template-rows: auto auto auto 1fr;
-            row-gap: 2.2mm;
-        }
-        .trend-print-name {
-            text-align: center;
-            font-size: 18px;
-            font-weight: 800;
-            color: #0f172a;
-            padding-top: 2mm;
-            line-height: 1.25;
-        }
-        .trend-print-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 2.8mm;
-            min-height: 0;
-        }
-        .trend-print-main .trend-print-card { height: 55mm; }
-        .trend-print-section-title {
-            text-align: center;
-            font-size: 13px;
-            font-weight: 800;
-            color: #334155;
-            line-height: 1.1;
-            margin-top: 1mm;
-        }
-        .trend-print-subjects { align-content: start; }
-        .trend-print-card {
-            border: 1px solid #e5e7eb;
-            border-radius: 6px;
-            padding: 1.2mm;
-            box-sizing: border-box;
-            overflow: hidden;
-            background: #fff;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-            position: relative;
-        }
-        .trend-print-card-title {
-            flex: 0 0 auto;
-            text-align: center;
-            font-size: 10.5px;
-            font-weight: 800;
-            color: #475569;
-            line-height: 1.12;
-            margin-bottom: .8mm;
-        }
-        .trend-print-svg-box {
-            flex: 1 1 auto;
-            min-height: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            position: relative;
-        }
-        .trend-print-svg-box svg {
-            display: block;
-            width: 100% !important;
-            height: 100% !important;
-            max-width: 100%;
-            max-height: 100%;
-            position: static !important;
-            left: auto !important;
-            top: auto !important;
-            transform: none !important;
-        }
-        .search-input { width: 100%; padding: 8px 14px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; transition: var(--transition); background: var(--surface); }
-        .search-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(30,58,95,.1); }
-        .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius) var(--radius); max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: var(--shadow-lg); display: none; }
-        .autocomplete-dropdown.show { display: block; }
-        .autocomplete-item { padding: 8px 14px; cursor: pointer; transition: var(--transition); font-size: 14px; }
-        .autocomplete-item:hover, .autocomplete-item.active { background: var(--primary); color: #fff; }
-        .nav-buttons-v82 { position: fixed; top: 50%; transform: translateY(-50%); left: 0; right: 0; display: flex; justify-content: space-between; pointer-events: none; z-index: 100; padding: 0 24px; }
-        .nav-btn-v82 { pointer-events: auto; background: var(--primary); color: #fff; border: none; width: 48px; height: 48px; border-radius: 50%; font-size: 22px; cursor: pointer; box-shadow: var(--shadow-md); transition: var(--transition); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
-        .nav-btn-v82:hover { background: var(--primary-dark); transform: scale(1.08); box-shadow: var(--shadow-lg); }
-        .nav-btn-v82:disabled { background: var(--text-tertiary); cursor: not-allowed; transform: none; box-shadow: none; }
-        .nav-buttons { display: flex; justify-content: center; gap: 16px; margin: 12px 0; align-items: center; }
-        .nav-btn { background: var(--primary); color: #fff; border: none; padding: 10px 24px; border-radius: var(--radius-sm); cursor: pointer; font-size: 14px; font-weight: 600; transition: var(--transition); }
-        .nav-btn:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: var(--shadow-md); }
-        .nav-btn:disabled { background: var(--border); color: var(--text-tertiary); cursor: not-allowed; transform: none; box-shadow: none; }
-        .export-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
-        .student-report-actions { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
-        .student-readable-report { background:#fff; border:1px solid var(--border); border-radius:14px; padding:22px; box-shadow:var(--shadow); color:#111827; }
-        .sr-cover { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; padding-bottom:16px; border-bottom:2px solid #1e3a5f; margin-bottom:16px; }
-        .sr-title h2 { margin:0 0 6px; color:#1e3a5f; font-size:24px; letter-spacing:.03em; }
-        .sr-title p { color:#64748b; font-size:13px; margin:0; }
-        .sr-meta { min-width:220px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12px; line-height:1.8; }
-        .sr-kpis { display:grid; grid-template-columns:repeat(4,minmax(120px,1fr)); gap:10px; margin:14px 0 18px; }
-        .sr-kpi { border-radius:12px; padding:12px; background:linear-gradient(135deg,#f8fafc,#eef2ff); border:1px solid #dbeafe; }
-        .sr-kpi-label { font-size:12px; color:#64748b; margin-bottom:4px; }
-        .sr-kpi-value { font-size:20px; font-weight:800; color:#1e3a5f; }
-        .sr-section { margin-top:18px; page-break-inside:avoid; break-inside:avoid; }
-        .sr-section h3 { font-size:16px; color:#1e3a5f; margin-bottom:8px; padding-left:8px; border-left:4px solid #1e3a5f; }
-        .sr-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
-        .sr-chart { height:260px; border:1px solid #e5e7eb; border-radius:12px; background:#fff; }
-        .sr-chart-large { height:300px; }
-        .sr-chart-wide { height:280px; grid-column:1 / -1; }
-        .sr-track-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-        .sr-track-chart { height:280px; border:1px solid #e5e7eb; border-radius:12px; background:#fff; }
-        .sr-alluvial-chart { height:420px; grid-column:1 / -1; border:1px solid #e5e7eb; border-radius:12px; background:#fff; }
-        .sr-note-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px; font-size:13px; line-height:1.8; }
-        .sr-table { width:100%; border-collapse:collapse; margin-top:8px; }
-        .sr-table th, .sr-table td { border:1px solid #e5e7eb; padding:7px 6px; font-size:12px; text-align:center; }
-        .sr-table th { background:#1e3a5f; color:#fff; position:static; }
-        .sr-table tr:nth-child(even) { background:#f8fafc; }
-        .sr-table th.sr-overview-top { background:#315f89; }
-        .sr-table th.sr-overview-improve { background:#2f6f55; }
-        .sr-table th.sr-overview-decline { background:#9b4b4b; }
-        .sr-table .sr-overview-start { border-left-width:3px; }
-        .sr-pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:800; border:1px solid transparent; white-space:nowrap; }
-        .sr-good { background:#dcfce7; color:#166534; border-color:#86efac; }
-        .sr-warn { background:#fff7ed; color:#9a3412; border-color:#fdba74; }
-        .sr-danger { background:#ffe4e6; color:#be123c; border-color:#fda4af; }
-        .sr-focus { background:#dc2626; color:#fff; border-color:#991b1b; box-shadow:inset 0 0 0 1px rgba(255,255,255,.22); }
-        .sr-assist { background:#dbeafe; color:#1d4ed8; border-color:#93c5fd; }
-        .sr-plan { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-        .sr-plan-card { border:1px solid #e5e7eb; border-radius:12px; padding:12px; background:#fff; }
-        .sr-plan-card h4 { margin:0 0 8px; color:#1e3a5f; }
-        .sr-plan-card ul { margin-left:18px; font-size:13px; line-height:1.8; }
-        .sr-review-table td { vertical-align:top; line-height:1.55; }
-        .sr-reflection-list { display:grid; gap:16px; margin-top:12px; }
-        .sr-reflection-card, .sr-week-card { border-top:2px solid #1e3a5f; padding-top:12px; break-inside:avoid; page-break-inside:avoid; }
-        .sr-card-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
-        .sr-card-heading h4 { margin:0; color:#1e3a5f; font-size:14px; }
-        .sr-focus-check { white-space:nowrap; font-size:13px; font-weight:700; }
-        .sr-cause-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px 12px; margin:9px 0; }
-        .sr-cause-option { display:flex; align-items:flex-start; gap:7px; font-size:12px; line-height:1.45; }
-        .sr-cause-option input, .sr-focus-check input { width:16px; height:16px; flex:0 0 auto; accent-color:#1e3a5f; }
-        .sr-cause-option b { display:block; color:#1e3a5f; }
-        .sr-careless-question { padding:9px 10px; border-left:3px solid #f59e0b; background:#fffbeb; font-size:12px; line-height:1.6; }
-        .sr-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px 12px; margin-top:10px; }
-        .sr-form-field { display:block; font-size:12px; font-weight:700; color:#334155; }
-        .sr-form-field.sr-full { grid-column:1 / -1; }
-        .sr-form-field input, .sr-form-field textarea { display:block; width:100%; box-sizing:border-box; margin-top:4px; border:1px solid #cbd5e1; border-radius:4px; padding:7px 8px; color:#111827; background:#fff; font:inherit; font-weight:400; resize:vertical; }
-        .sr-form-field textarea { min-height:58px; overflow:hidden; }
-        .sr-teacher-confirm { margin-top:11px; padding-top:10px; border-top:1px dashed #94a3b8; }
-        .sr-teacher-confirm h5 { margin:0 0 7px; color:#1e3a5f; font-size:13px; }
-        .comp-readable-report { background:#fff; border:1px solid var(--border); border-radius:14px; padding:24px; box-shadow:var(--shadow); color:#111827; }
-        .cr-cover { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; padding-bottom:16px; border-bottom:2px solid #1e3a5f; margin-bottom:18px; }
-        .cr-cover h2 { margin:0 0 6px; color:#1e3a5f; font-size:24px; }
-        .cr-cover p { margin:0; color:#64748b; font-size:13px; }
-        .cr-meta { min-width:220px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12px; line-height:1.8; }
-        .cr-body { font-size:13px; line-height:1.75; }
-        .cr-body h1 { display:block; text-align:left; border-bottom:1px solid #cbd5e1; color:#1e3a5f; padding-bottom:8px; margin:18px 0 12px; font-size:22px; }
-        .cr-body h2 { color:#1e3a5f; border-left:4px solid #1e3a5f; padding-left:8px; margin:18px 0 8px; font-size:17px; page-break-after:avoid; break-after:avoid; }
-        .cr-body h3 { color:#334155; margin:14px 0 6px; font-size:15px; page-break-after:avoid; break-after:avoid; }
-        .cr-body h4 { color:#475569; margin:12px 0 4px; font-size:14px; }
-        .cr-body table { width:100%; border-collapse:collapse; margin:8px 0 14px; page-break-inside:auto; }
-        .cr-body th, .cr-body td { border:1px solid #e5e7eb; padding:6px 5px; font-size:11px; text-align:center; vertical-align:top; }
-        .cr-body th { background:#1e3a5f; color:#fff; position:static; }
-        .cr-body tr:nth-child(even) { background:#f8fafc; }
-        .cr-body blockquote { margin:10px 0; padding:8px 12px; border-left:4px solid #f59e0b; background:#fffbeb; color:#713f12; border-radius:6px; }
-        .cr-body ul, .cr-body ol { margin:8px 0 12px 22px; }
-        .cr-body code { background:#f1f5f9; padding:1px 4px; border-radius:4px; }
-        .cr-body pre { white-space:pre-wrap; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-size:12px; }
-        @media print {
-            @page { size: A4; margin: 10mm 9mm 12mm; }
-            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            body { background: #fff; padding: 0; padding-bottom: 0; }
-            .container { max-width: none; width: 100%; box-shadow: none; border-radius: 0; padding: 20px; }
-            .controls-panel, .nav-buttons, .top-controls, .search-section, .customization-controls,
-            .tab-nav, .upload-area-container, .batch-bar, .batch-info-bar, .controls, .export-buttons,
-            .search-bar, .filter-stats-bar, .level-bar, .rank-bar, .info-section, h1,
-            .nav-buttons, .nav-buttons-v82,
-            #batchSelector, #newBatchName, #saveBatchBtn, #deleteBatchBtn, #clearCurrentBtn, #batchStatus,
-            #trendReorderPanel, #trendEditOrderBtn, #trendBatchPrintBtn,
-            #savedBatchesLabel, #savedBatchesTags { display: none !important; }
-            .chart-box, .subject-chart-box { page-break-inside: avoid; box-shadow: none; border: 1px solid #eee; }
-            #trendReportContent { gap: 4px; max-width: none; width: 100%; }
-            .main-charts { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
-            .subjects-charts { grid-template-columns: repeat(2,1fr); gap: 8px; }
-            .chart-box { padding: 4px; margin: 0; }
-            .subject-chart-box { padding: 0; margin: 0; }
-            .chart-title { font-size: 11px; margin-bottom: 2px; margin-top: 2px; }
-            .subject-chart-box .chart-title { font-size: 11px; margin-bottom: 2px; margin-top: 1px; }
-            .student-name, #trendStudentName { font-size: 16px; margin-bottom: 2px; }
-            .subject-ranks-container { padding: 4px; }
-            .echarts-container { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            #totalRankChartContainer { height: 160px !important; }
-            #radarChartContainer { height: 160px !important; }
-            .subject-chart-box, .sub-chart { height: 170px !important; }
-            #trendSubjectsTitle { font-size: 12px !important; margin: 2px 0 !important; }
-            .chart-box, .subject-chart-box, .main-charts, .subjects-charts { page-break-inside: avoid !important; break-inside: avoid !important; }
-            body > .container > .tab-panel:not(.active):not(.printing) { display: none !important; }
-            #tab-trend.printing { display: block !important; }
-            body.print-trend-report .container,
-            body.print-trend-report .tab-panel,
-            body.print-trend-report .tab-nav,
-            body.print-trend-report h1,
-            body.print-trend-report .batch-info-bar,
-            body.print-trend-report .controls-panel,
-            body.print-trend-report .nav-buttons,
-            body.print-trend-report .nav-buttons-v82,
-            body.print-trend-report #trendReportContent { display:none !important; }
-            body.print-trend-report .trend-svg-print-root {
-                display:block !important;
-                position:static !important;
-                left:0 !important;
-                width:100% !important;
-                background:#fff !important;
-            }
-            body.print-trend-report .trend-print-sheet { display:grid !important; }
-            body.print-trend-report .trend-print-sheet:last-child { page-break-after:auto !important; break-after:auto !important; }
-            body.print-student-report .container { padding:0; }
-            body.print-student-report .tab-panel,
-            body.print-student-report .tab-nav,
-            body.print-student-report h1,
-            body.print-student-report .batch-info-bar,
-            body.print-student-report .comprehensive-sidebar,
-            body.print-student-report #comprehensiveOutput,
-            body.print-student-report #progressOutput,
-            body.print-student-report #criticalOutput,
-            body.print-student-report #corrOutput,
-            body.print-student-report #comprehensivePlaceholder,
-            body.print-student-report #smartPlaceholder,
-            body.print-student-report .student-report-actions { display:none !important; }
-            body.print-student-report #tab-smart,
-            body.print-student-report #studentReadableReportOutput { display:block !important; }
-            body.print-student-report .comprehensive-layout,
-            body.print-student-report .comprehensive-main { display:block !important; width:100% !important; }
-            body.print-student-report .student-readable-report { box-shadow:none; border:none; border-radius:0; padding:0; }
-            body.print-student-report .sr-chart { height:205px !important; }
-            body.print-student-report .sr-chart-large { height:230px !important; }
-            body.print-student-report .sr-chart-wide { height:220px !important; }
-            body.print-student-report .sr-section { page-break-inside:auto; break-inside:auto; padding-top:3mm; }
-            body.print-student-report .sr-section h3 { page-break-after:avoid; break-after:avoid; }
-            body.print-student-report .sr-chart { page-break-inside:avoid; break-inside:avoid; margin-bottom:8px; }
-            body.print-student-report .sr-grid { page-break-inside:auto; break-inside:auto; }
-            body.print-student-report .sr-table { page-break-inside:auto; break-inside:auto; }
-            body.print-student-report .sr-table tr { page-break-inside:avoid; break-inside:avoid; }
-            body.print-student-report .sr-reflection-card,
-            body.print-student-report .sr-week-card { page-break-inside:avoid; break-inside:avoid; }
-            body.print-student-report input[type="checkbox"] { -webkit-print-color-adjust:exact; print-color-adjust:exact; opacity:1; visibility:visible; }
-            body.print-student-report .sr-cause-grid { grid-template-columns:repeat(3,1fr); }
-            body.print-student-report .sr-cause-option { display:flex !important; }
-            body.print-student-report .sr-form-field textarea { height:auto; min-height:18mm; overflow:visible !important; resize:none; }
-            body.print-comprehensive-report .container { padding:0; }
-            body.print-comprehensive-report .tab-panel,
-            body.print-comprehensive-report .tab-nav,
-            body.print-comprehensive-report h1,
-            body.print-comprehensive-report .batch-info-bar,
-            body.print-comprehensive-report .comprehensive-sidebar,
-            body.print-comprehensive-report #comprehensiveOutput,
-            body.print-comprehensive-report #studentReadableReportOutput,
-            body.print-comprehensive-report #progressOutput,
-            body.print-comprehensive-report #criticalOutput,
-            body.print-comprehensive-report #corrOutput,
-            body.print-comprehensive-report #comprehensivePlaceholder,
-            body.print-comprehensive-report #smartPlaceholder,
-            body.print-comprehensive-report .student-report-actions { display:none !important; }
-            body.print-comprehensive-report #tab-smart,
-            body.print-comprehensive-report #comprehensiveReadableReportOutput { display:block !important; }
-            body.print-comprehensive-report .comprehensive-layout,
-            body.print-comprehensive-report .comprehensive-main { display:block !important; width:100% !important; }
-            body.print-comprehensive-report .comp-readable-report { box-shadow:none; border:none; border-radius:0; padding:0; }
-            body.print-comprehensive-report .cr-cover,
-            body.print-comprehensive-report .sr-kpis { page-break-inside:avoid; break-inside:avoid; }
-            body.print-comprehensive-report .sr-section { page-break-inside:auto; break-inside:auto; padding-top:3mm; }
-            body.print-comprehensive-report .sr-section h3 { page-break-after:avoid; break-after:avoid; }
-            body.print-comprehensive-report .sr-chart,
-            body.print-comprehensive-report .sr-track-chart,
-            body.print-comprehensive-report .sr-alluvial-chart { page-break-inside:avoid; break-inside:avoid; margin-bottom:8px; }
-            body.print-comprehensive-report .sr-track-chart { height:220px !important; }
-            body.print-comprehensive-report .sr-alluvial-chart { height:320px !important; }
-            body.print-comprehensive-report .sr-grid { page-break-inside:auto; break-inside:auto; }
-            body.print-comprehensive-report .sr-table { page-break-inside:auto; break-inside:auto; }
-            body.print-comprehensive-report .sr-table tr { page-break-inside:avoid; break-inside:avoid; }
-            body.print-comprehensive-report .cr-body h2 { page-break-after:avoid; break-after:avoid; }
-            body.print-comprehensive-report .cr-body table { page-break-inside:auto; break-inside:auto; }
-            body.print-comprehensive-report .cr-body tr { page-break-inside:avoid; break-inside:avoid; }
-        }
-        @media (max-width: 768px) {
-            .sr-cause-grid, .sr-form-grid { grid-template-columns:1fr; }
-            .sr-form-field.sr-full { grid-column:auto; }
-            .sr-card-heading { align-items:flex-start; }
-            .upload-area-container { flex-direction: column; }
-            .tab-nav { overflow-x:auto; border-bottom-width:1px; }
-            .tab-nav button { flex:0 0 auto; min-width:fit-content; font-size:12px; padding:10px 10px 8px; white-space:nowrap; }
-            .trend-charts, .subject-charts { grid-template-columns: 1fr; }
-            .sr-track-grid { grid-template-columns: 1fr; }
-        }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        select, input, button { font-family: inherit; }
-        .batch-tag { display:inline-flex; align-items:center; gap:4px; padding:4px 12px; background:#fff; color:var(--text-secondary); border-radius:20px; font-size:12px; cursor:pointer; border:1px solid #cbd5e1; white-space:nowrap; transition:var(--transition); box-shadow:0 1px 2px rgba(0,0,0,.04); }
-        .batch-tag:hover { border-color:var(--primary); color:var(--primary); background:#f8faff; }
-        .batch-tag.active { background:var(--primary); color:#fff; border-color:var(--primary); box-shadow:0 2px 8px rgba(28,61,92,.2); }
-        .comprehensive-layout { display:flex; gap:20px; align-items:flex-start; margin-top:12px; }
-        .comprehensive-sidebar { width:240px; flex-shrink:0; display:flex; flex-direction:column; gap:8px; }
-        .comprehensive-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:12px; }
-        .comp-card { border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; cursor:pointer; transition:var(--transition); box-shadow:var(--shadow-sm); border-left:3px solid var(--border); }
-        .comp-card:hover { box-shadow:var(--shadow); }
-        .comp-card[data-comp="individual"] { border-left-color:var(--primary); background:#f0f4f8; }
-        .comp-card[data-comp="group"] { border-left-color:#7c3aed; background:#f5f3ff; }
-        .comp-card[data-comp="subject"] { border-left-color:#ca8a04; background:#fffbeb; }
-        .comp-card[data-comp="progress"] { border-left-color:#047857; background:#ecfdf5; }
-        .comp-card[data-comp="critical"] { border-left-color:#b91c1c; background:#fef2f2; }
-        .comp-card[data-comp="correlation"] { border-left-color:#7c3aed; background:#faf5ff; }
-        .comp-card.active { border-left-color:var(--primary); border-color:var(--primary-light); background:#f8faff; box-shadow:var(--shadow); }
-        .comp-card-header { font-size:13px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px; margin-bottom:2px; }
-        .comp-card-desc { font-size:11px; color:var(--text-tertiary); line-height:1.35; margin:0 0 8px 22px; }
-        .comp-card-controls { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
-        .comp-card-controls .control-group { gap:4px; }
-        .comp-card-controls .control-group label { font-size:12px; }
-        .comp-card-controls .control-group input,
-        .comp-card-controls .control-group select { padding:4px 6px; font-size:12px; }
-        .comp-card-controls .filter-btn { padding:4px 10px; font-size:11px; }
-        .comp-card-controls input[type=range] { width:60px; }
-        #tab-comprehensive .filter-btn.comp-btn-primary { background:var(--primary); }
-        #tab-comprehensive .filter-btn.comp-btn-primary:hover { background:var(--primary-dark); }
-        #tab-comprehensive .filter-btn.comp-btn-copy { background:var(--success); }
-        #tab-comprehensive .filter-btn.comp-btn-purple { background:#7c3aed; }
-        #tab-comprehensive .filter-btn.comp-btn-purple:hover { background:#6d28d9; }
-        #tab-comprehensive .filter-btn.comp-btn-warning { background:var(--warning); }
-        #tab-comprehensive .filter-btn.comp-btn-info { background:#0891b2; }
-        #tab-comprehensive .filter-btn.comp-btn-danger { background:var(--danger); }
-        #tab-comprehensive .comp-output-actions { margin-top:6px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-        #tab-comprehensive .comp-copy-btn { background:var(--success); color:#fff; border:none; padding:8px 18px; border-radius:var(--radius-sm); cursor:pointer; font-size:13px; font-weight:600; transition:var(--transition); }
-        #tab-comprehensive .comp-copy-btn:hover { background:#065f46; transform:translateY(-1px); box-shadow:var(--shadow-md); }
-        .subj-class-chip { display:inline-flex; align-items:center; gap:3px; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:500; cursor:pointer; user-select:none; transition:all .15s; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); }
-        .subj-class-chip:hover { border-color:var(--primary-light); background:#f0f4ff; }
-        .subj-class-chip.active { background:var(--primary); color:#fff; border-color:var(--primary); }
-        .subj-class-chip.active:hover { background:var(--primary-light); }
-        .analysis-nav-layout { display:flex; gap:20px; align-items:flex-start; margin-top:12px; }
-        .analysis-section-nav { width:220px; flex-shrink:0; position:sticky; top:16px; display:flex; flex-direction:column; gap:2px; padding:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); max-height:calc(100vh - 32px); overflow:auto; }
-        .analysis-section-nav-title { font-size:13px; font-weight:700; color:var(--primary); padding:4px 6px 10px; margin-bottom:4px; border-bottom:2px solid var(--primary); letter-spacing:.04em; }
-        .analysis-nav-item { display:block; width:100%; text-align:left; border:none; border-left:3px solid transparent; background:transparent; color:var(--text-secondary); border-radius:0 var(--radius-sm) var(--radius-sm) 0; padding:9px 12px; font-size:13px; font-weight:500; line-height:1.35; cursor:pointer; transition:background .15s ease, color .15s ease; margin-bottom:1px; }
-        .analysis-nav-item:hover { color:var(--primary); background:#f0f4ff; border-left-color:#b8cce8; }
-        .analysis-nav-item.active { color:var(--primary); background:#e8f0fe; border-left-color:var(--primary); font-weight:600; }
-        .analysis-nav-top { margin-top:12px; border-top:1px solid var(--border); padding-top:10px; font-size:12px; color:var(--text-tertiary); border-left-color:transparent !important; border-radius:var(--radius-sm); }
-        .analysis-nav-top:hover { color:var(--primary); background:#f8fafc; border-left-color:var(--primary-light) !important; }
-        .analysis-content { flex:1; min-width:0; }
-        .analysis-anchor-section { scroll-margin-top:18px; }
-        .analysis-anchor-section.analysis-section-pulse { outline:2px solid rgba(28,61,92,.18); outline-offset:3px; border-radius:var(--radius); }
-        @media (max-width: 900px) {
-            .analysis-nav-layout { display:block; }
-            .analysis-section-nav { position:static; width:100%; max-height:none; flex-direction:row; overflow-x:auto; margin-bottom:14px; gap:6px; }
-            .analysis-section-nav-title { flex:0 0 auto; border-bottom:none; border-right:2px solid var(--primary); padding:8px 10px 8px 0; margin:0 4px 0 0; }
-            .analysis-nav-item { flex:0 0 auto; width:auto; white-space:nowrap; border-left:none; border-bottom:3px solid transparent; border-radius:var(--radius-sm) var(--radius-sm) 0 0; }
-            .analysis-nav-item.active { border-left-color:transparent; border-bottom-color:var(--primary); background:transparent; }
-            .analysis-nav-item:hover { border-left-color:transparent; }
-            .analysis-nav-top { margin-top:0; border-top:none; border-left:1px solid var(--border) !important; padding-top:0; padding-left:12px; border-bottom-color:transparent !important; }
-        }
-        details { margin-bottom: 18px; }
-        details summary { cursor: pointer; font-weight: 600; color: var(--text-primary); padding: 8px 0; font-size: .95rem; transition: var(--transition); }
-        details summary:hover { color: var(--primary); }
-        details[open] { padding-bottom: 8px; }
-        hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
-        a { color: var(--primary); text-decoration: none; transition: var(--transition); }
-        a:hover { color: var(--primary-dark); text-decoration: underline; }
-        #modalOverlay { align-items: center; justify-content: center; backdrop-filter: blur(4px); transition: opacity .2s; }
-        #modalBox { border-radius: 12px !important; padding: 28px !important; box-shadow: 0 20px 60px rgba(0,0,0,.15) !important; }
-        #modalMessage { font-size: 15px !important; line-height: 1.6 !important; }
-        #modalCancelBtn { border-radius: 8px !important; font-weight: 600 !important; transition: var(--transition) !important; }
-        #modalCancelBtn:hover { background: #e8e8e8 !important; }
-        #modalConfirmBtn { border-radius: 8px !important; font-weight: 600 !important; transition: var(--transition) !important; }
-        #modalConfirmBtn:hover { background: #c1121f !important; }
 
-    /* ══════════════════════════════════════════
-       座位 Tab (#tab-seating) 样式
-       ══════════════════════════════════════════ */
-    #tab-seating {
-        --seating-primary: #1e3a5f;
-        --seating-primary-light: #2d5380;
-        --seating-primary-dark: #0d233a;
-        --seating-fixed-green: #22c55e;
-        --seating-special-yellow: #eab308;
-        --seating-tag-good: #dcfce7;
-        --seating-tag-bad: #fef3c7;
-        --seating-tag-drop: #fee2e2;
-        --seating-bg: #f1f5f9;
-        --seating-surface: #ffffff;
-        --seating-text: #0f172a;
-        --seating-text2: #475569;
-        --seating-text3: #94a3b8;
-        --seating-border: #e2e8f0;
-        --seating-shadow: 0 1px 3px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.04);
-        --seating-shadow-lg: 0 4px 16px rgba(0,0,0,0.08);
-        --seating-radius: 10px;
-        --seating-radius-sm: 6px;
-    }
-    #tab-seating .sb-card{
-        background:var(--seating-surface);border-radius:var(--seating-radius);padding:16px;
-        box-shadow:var(--seating-shadow);border:1px solid var(--seating-border);
-    }
-    #tab-seating .sb-card-title{
-        font-size:.85rem;font-weight:700;color:var(--seating-text);margin-bottom:12px;
-        display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--seating-border);
-    }
-    #tab-seating .seating-layout{display:flex;gap:16px;min-height:500px;}
-    #tab-seating .seating-sidebar{
-        width:240px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;
-    }
-    #tab-seating .seating-sidebar.collapsed{width:0;overflow:hidden;min-width:0;}
-    #tab-seating .seating-content-wrapper{
-        flex:1;display:flex;flex-direction:column;min-width:0;gap:12px;
-    }
-    #tab-seating .seating-main{
-        flex:1;overflow-y:auto;overflow-x:hidden;min-width:0;background:var(--seating-bg);border-radius:var(--seating-radius);padding:16px;
-    }
-    #tab-seating .seating-bottom{
-        flex-shrink:0;display:flex;flex-wrap:wrap;gap:12px;
-    }
-    #tab-seating .seating-bottom .sb-card{
-        flex:1;min-width:200px;
-    }
-    #tab-seating .stage{
-        text-align:center;padding:12px 20px;border-radius:var(--seating-radius-sm);margin:0 auto 20px;
-        max-width:300px;font-weight:700;font-size:.85rem;letter-spacing:3px;
-        background:var(--seating-primary-dark);color:#fff;box-shadow:var(--seating-shadow);
-    }
-    #tab-seating .seat-grid{
-        display:grid;
-        grid-template-columns:1fr 1fr 24px 1fr 1fr 24px 1fr 1fr 24px 1fr 1fr;
-        gap:4px;padding:4px;width:100%;max-width:100%;min-width:0;
-    }
-    #tab-seating .seat{
-        background:var(--seating-surface);border:1px solid var(--seating-border);border-radius:var(--seating-radius-sm);
-        min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-        padding:4px;position:relative;cursor:grab;transition:all .2s;
-        box-shadow:0 1px 3px rgba(0,0,0,0.04);
-    }
-    #tab-seating .seat:hover{transform:translateY(-3px);box-shadow:var(--seating-shadow-lg);border-color:var(--seating-primary-light);}
-    #tab-seating .seat.drag-over{background:#eef2ff;border:2px dashed var(--seating-primary);}
-    #tab-seating .seat.empty-seat{background:#f8fafc;border:2px dashed #cbd5e1;cursor:pointer;min-height:72px;}
-    #tab-seating .seat.empty-seat:hover{background:#f1f5f9;}
-    #tab-seating .seat-name{font-weight:700;font-size:.8rem;text-align:center;line-height:1.3;color:var(--seating-text);margin-bottom:2px;}
-    #tab-seating .corridor{
-        background:linear-gradient(180deg,#e2e8f0,#cbd5e1);min-height:72px;margin:0;
-        border-radius:var(--seating-radius-sm);display:flex;align-items:center;justify-content:center;
-        color:var(--seating-text3);font-weight:600;font-size:.65rem;text-transform:uppercase;letter-spacing:1px;
-    }
-    #tab-seating .corridor-label{user-select:none;pointer-events:none;line-height:1;}
-    #tab-seating .tag-display-area{display:flex;flex-direction:column;gap:2px;justify-content:center;align-items:center;margin-top:2px;pointer-events:none;width:100%;max-width:100%;overflow:hidden;}
-    #tab-seating .tag-hidden .tag-display-area{display:none!important;}
-    #tab-seating .mini-tag{
-        font-size:.58rem;padding:1px 4px;border-radius:3px;background:var(--seating-bg);line-height:1.3;
-        white-space:nowrap;text-align:center;border:1px solid var(--seating-border);color:var(--seating-text2);
-        max-width:100%;overflow:hidden;text-overflow:ellipsis;
-    }
-    #tab-seating .mini-tag.good{background:#dcfce7;border-color:#bbf7d0;color:#166534;}
-    #tab-seating .mini-tag.bad{background:#fee2e2;border-color:#fecaca;color:#991b1b;}
-    #tab-seating .mini-tag.drop{background:#fef3c7;border-color:#fde68a;color:#92400e;}
-    #tab-seating .modal-overlay2{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(4px);display:none;z-index:9999;}
-    #tab-seating .modal2{
-        position:fixed;right:-480px;top:0;width:440px;height:100%;
-        background:var(--seating-surface);box-shadow:-8px 0 30px rgba(0,0,0,0.12);
-        transition:right .35s cubic-bezier(.4,0,.2,1);z-index:10000;padding:24px;overflow-y:auto;
-    }
-    #tab-seating .modal2.active{right:0;}
-    #tab-seating .tag-section{margin-top:14px;}
-    #tab-seating .tag-section-title{font-size:.75rem;font-weight:600;color:var(--seating-text3);margin-bottom:8px;display:block;border-left:3px solid var(--seating-primary);padding-left:8px;}
-    #tab-seating .tag-pool{display:flex;flex-wrap:wrap;gap:5px;}
-    #tab-seating .tag-item{
-        padding:3px 10px;border:1px solid var(--seating-border);border-radius:12px;font-size:.7rem;
-        cursor:pointer;background:var(--seating-bg);color:var(--seating-text2);transition:.2s;user-select:none;
-    }
-    #tab-seating .tag-item:hover{background:var(--seating-surface);border-color:var(--seating-primary-light);}
-    #tab-seating .tag-item.selected{background:var(--seating-primary)!important;color:#fff!important;font-weight:600;border-color:var(--seating-primary);}
-    #tab-seating .analysis-section{
-        margin-top:14px;padding:12px;background:var(--seating-bg);border-radius:var(--seating-radius-sm);border-left:3px solid var(--seating-primary);
-    }
-    #tab-seating .analysis-title{font-weight:700;margin-bottom:8px;font-size:.85rem;color:var(--seating-text);}
-    #tab-seating .analysis-item{margin:6px 0;padding:6px 8px;background:var(--seating-surface);border-radius:4px;font-size:.78rem;line-height:1.5;}
-    #tab-seating .analysis-item strong{color:var(--seating-primary);}
-    #tab-seating .strength{color:#16a34a;}
-    #tab-seating .weakness{color:#dc2626;}
-    #tab-seating .btn2{
-        border:none;padding:8px 14px;border-radius:var(--seating-radius-sm);cursor:pointer;font-weight:600;font-size:.78rem;
-        transition:all .2s cubic-bezier(.4,0,.2,1);display:inline-flex;align-items:center;justify-content:center;gap:4px;
-    }
-    #tab-seating .btn2:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.08);}
-    #tab-seating .btn2:active{transform:translateY(0);}
-    #tab-seating .btn2-primary{background:var(--seating-primary);color:#fff;}
-    #tab-seating .btn2-primary:hover{background:var(--seating-primary-dark);}
-    #tab-seating .btn2-ghost{background:var(--seating-bg);color:var(--seating-text2);border:1px solid var(--seating-border);}
-    #tab-seating .btn2-ghost:hover{background:var(--seating-border);}
-    #tab-seating .btn2-danger{background:#ef4444;color:#fff;}
-    #tab-seating .btn2-danger:hover{background:#dc2626;}
-    #tab-seating .btn2-success{background:#22c55e;color:#fff;}
-    #tab-seating .btn2-success:hover{background:#16a34a;}
-    #tab-seating .btn2-block{width:100%;}
-    #tab-seating .btn2-sm{padding:5px 10px;font-size:.7rem;}
-    #tab-seating .btn2-blue{background:var(--seating-primary);color:#fff;}
-    #tab-seating .btn2-blue:hover{background:var(--seating-primary-dark);}
-    #tab-seating .btn2-toggle{background:var(--seating-surface);border:1px solid var(--seating-border);color:var(--seating-text2);}
-    #tab-seating .btn2-toggle:hover{background:var(--seating-bg);}
-    #tab-seating .btn2-mode{
-        background:var(--seating-surface);color:var(--seating-text2);border:1px solid var(--seating-border);font-size:.72rem;
-        padding:7px 10px;border-radius:var(--seating-radius-sm);width:100%;margin-top:4px;
-        display:flex;align-items:center;justify-content:center;gap:6px;font-weight:500;cursor:pointer;
-        transition:all .15s;
-    }
-    #tab-seating .btn2-mode:hover{box-shadow:var(--seating-shadow);}
-    #tab-seating .btn2-mode.active{color:#fff;border-color:transparent;box-shadow:none;}
-    #tab-seating .btn2-mode.mode-academic{background:#f0fdf4;border-color:#bbf7d0;color:#166534;}
-    #tab-seating .btn2-mode.mode-academic:hover{background:#dcfce7;border-color:#86efac;}
-    #tab-seating .btn2-mode.mode-academic.active{background:#22c55e;color:#fff;}
-    #tab-seating .btn2-mode.mode-behavior{background:#fff7ed;border-color:#fed7aa;color:#9a3412;}
-    #tab-seating .btn2-mode.mode-behavior:hover{background:#ffedd5;border-color:#fdba74;}
-    #tab-seating .btn2-mode.mode-behavior.active{background:#f97316;color:#fff;}
-    #tab-seating .btn2-mode.mode-social{background:#f0f9ff;border-color:#bae6fd;color:#075985;}
-    #tab-seating .btn2-mode.mode-social:hover{background:#e0f2fe;border-color:#7dd3fc;}
-    #tab-seating .btn2-mode.mode-social.active{background:#0ea5e9;color:#fff;}
-    #tab-seating .btn2-seat-primary{
-        background:var(--seating-primary);color:#fff;
-        border:none;font-size:.85rem;padding:10px 14px;border-radius:var(--seating-radius-sm);
-        width:100%;margin-top:2px;cursor:pointer;font-weight:700;letter-spacing:.5px;
-        display:flex;align-items:center;justify-content:center;gap:8px;
-        transition:all .2s;box-shadow:0 2px 8px rgba(30,58,95,0.25);
-    }
-    #tab-seating .btn2-seat-primary:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(30,58,95,0.35);}
-    #tab-seating .btn2-seat-primary:active{transform:translateY(0);}
-    #tab-seating .mode-divider{
-        font-size:.65rem;color:var(--seating-text3);margin:10px 0 4px;
-        text-transform:uppercase;letter-spacing:.6px;font-weight:600;
-        display:flex;align-items:center;gap:8px;
-    }
-    #tab-seating .mode-divider::after{content:'';flex:1;height:1px;background:var(--seating-border);}
-    #tab-seating .mode-hint{font-size:.62rem;color:var(--seating-text3);margin:5px 0 2px;line-height:1.4;text-align:center;}
-    #tab-seating .btn2-advanced{
-        background:var(--seating-surface);color:var(--seating-text2);border:1px solid var(--seating-border);font-size:.72rem;
-        padding:7px 10px;border-radius:var(--seating-radius-sm);width:100%;margin-top:4px;
-        display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:all .15s;
-    }
-    #tab-seating .btn2-advanced:hover{border-color:var(--seating-primary-light);color:var(--seating-primary);background:var(--seating-bg);}
-    #tab-seating .btn2-clear{
-        background:var(--seating-surface);color:#ef4444;border:1px solid #fca5a5;font-size:.72rem;
-        padding:7px 10px;border-radius:var(--seating-radius-sm);width:100%;margin-top:4px;
-        display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:all .15s;
-    }
-    #tab-seating .btn2-clear:hover{background:#fef2f2;border-color:#ef4444;}
-    #tab-seating .btn2-rotation{background:var(--seating-primary);color:#fff;}
-    #tab-seating .btn2-rotation:hover{background:var(--seating-primary-dark);}
-    #tab-seating .gradient-badge{
-        display:inline-flex;width:20px;height:20px;border-radius:50%;color:#fff;
-        font-size:.6rem;font-weight:700;text-align:center;align-items:center;justify-content:center;margin-right:3px;flex-shrink:0;
-    }
-    #tab-seating .gradient-1{background:#0f172a;}#tab-seating .gradient-2{background:#1e3a5f;}#tab-seating .gradient-3{background:#065f46;}
-    #tab-seating .gradient-4{background:#047857;}#tab-seating .gradient-5{background:#92400e;}#tab-seating .gradient-6{background:#7c2d12;}
-    #tab-seating .gradient-7{background:#991b1b;}#tab-seating .gradient-8{background:#451a03;}
-    #tab-seating .student-list{
-        display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;padding:4px;min-height:60px;
-    }
-    #tab-seating .student-item{
-        background:var(--seating-bg);border:1px solid var(--seating-border);border-left:3px solid var(--seating-primary);
-        padding:6px 10px;border-radius:var(--seating-radius-sm);cursor:grab;display:flex;justify-content:space-between;align-items:center;font-size:.78rem;
-    }
-    #tab-seating .student-item:hover{background:#eef2ff;border-color:var(--seating-primary-light);}
-    #tab-seating .student-item.dragging{opacity:.5;background:#e0e7ff;}
-    #tab-seating .history-panel{max-height:160px;overflow-y:auto;margin-top:6px;}
-    #tab-seating .history-item{
-        padding:5px 8px;font-size:.72rem;border-bottom:1px solid var(--seating-border);cursor:pointer;display:flex;justify-content:space-between;border-radius:3px;
-    }
-    #tab-seating .history-item:hover{background:var(--seating-bg);}
-    #tab-seating .sidebar-label{font-size:.75rem;font-weight:600;color:var(--seating-text2);margin-bottom:8px;display:flex;align-items:center;gap:6px;}
-    #tab-seating .sb-section{border-bottom:1px solid var(--seating-border);padding:12px 14px;}
-    #tab-seating .sb-section:last-child{border-bottom:none;}
-    #tab-seating select, #tab-seating input{font-family:inherit;outline:none;}
-    #tab-seating select:focus, #tab-seating input:focus{border-color:var(--seating-primary)!important;}
-    #tab-seating ::-webkit-scrollbar{width:5px;height:5px;}
-    #tab-seating ::-webkit-scrollbar-track{background:transparent;}
-    #tab-seating ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:10px;}
-    #tab-seating ::-webkit-scrollbar-thumb:hover{background:#94a3b8;}
-    #tab-seating .fade-in{animation:seatingFadeIn .35s ease;}
-    #tab-seating .seat-locked{position:absolute;top:2px;right:4px;font-size:10px;}
-    #tab-seating .sb-card{transition:box-shadow .2s ease;}
-    #tab-seating .sb-card:hover{box-shadow:var(--seating-shadow-lg);}
-    #tab-seating .help-graph-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);display:none;z-index:10001;align-items:center;justify-content:center;}
-    #tab-seating .help-graph-modal{width:min(92vw,980px);height:min(82vh,680px);background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.22);padding:18px;display:flex;flex-direction:column;gap:10px;}
-    #tab-seating .help-graph-header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--seating-border);padding-bottom:8px;font-weight:700;color:var(--seating-text);}
-    #tab-seating .help-graph-chart{flex:1;min-height:420px;}
-    @keyframes seatingFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-
-    /* ── Markdown 渲染样式（错题本） ─────────── */
-    .markdown-body {
-        font-size: 13px;
-        line-height: 1.8;
-        color: #374151;
-    }
-    .markdown-body img {
-        max-width: min(100%, 400px);
-        max-height: 400px;
-        width: auto;
-        height: auto;
-        object-fit: contain;
-        display: block;
-        margin: 10px auto;
-        border-radius: 4px;
-    }
-    .markdown-body p {
-        margin-bottom: 8px;
-    }
-    .markdown-body .katex-display {
-        margin: 8px 0;
-        overflow-x: auto;
-        overflow-y: hidden;
-    }
-    #studentErrorNotebookModal .error-notebook-panel {
-        background: #fff;
-        border-radius: 12px;
-        width: min(96vw, 1120px);
-        max-height: 88vh;
-        overflow-y: auto;
-        padding: 22px 24px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.22);
-        box-sizing: border-box;
-    }
-    #errorNotebookBody {
-        padding: 0 4px 10px;
-        box-sizing: border-box;
-    }
-    #errorNotebookBody .markdown-body {
-        padding: 14px 18px 14px 22px !important;
-        border-left-width: 4px !important;
-        max-height: 420px !important;
-        overflow-x: auto !important;
-        overflow-y: auto !important;
-        box-sizing: border-box;
-        word-break: break-word;
-    }
-    #errorNotebookBody .markdown-body p {
-        margin: 0 0 10px;
-    }
-    #errorNotebookBody .markdown-body img {
-        max-width: min(100%, 620px);
-        max-height: 520px;
-        margin: 12px auto;
-    }
-    #errorNotebookBody .error-item-card {
-        padding: 14px 12px !important;
-    }
-    </style>
-
-<style>
-/* notebook-choice-layout-v1 */
-.notebook-choice-grid{display:grid;gap:8px 22px;margin:10px 0 2px;align-items:start}
-.notebook-choice-grid--two{grid-template-columns:repeat(2,minmax(0,1fr))}
-.notebook-choice-grid--one{grid-template-columns:1fr}
-.notebook-choice-option{display:grid;grid-template-columns:28px minmax(0,1fr);gap:4px;align-items:start;padding:3px 0;min-width:0}
-.notebook-choice-label{font-weight:700;color:#334155;line-height:1.7}
-.notebook-choice-body{min-width:0;line-height:1.7}
-.notebook-choice-body>p{margin:0}
-.notebook-choice-body>p+p{margin-top:4px}
-@media (max-width:760px){.notebook-choice-grid--two{grid-template-columns:1fr}}
-</style>
 </head>
 <body>
 <div class="container">
@@ -872,34 +50,36 @@
         <span style="margin-left:auto;font-size:12px;color:#888;" id="batchStatus">请先上传数据再保存批次</span>
     </div>
 
-    <div class="upload-area-container">
-        <div class="upload-section">
-            <h3>总成绩表</h3>
-            <button class="upload-btn" onclick="document.getElementById('mainFileInput').click()">选择总表文件</button>
-            <button class="upload-btn" onclick="downloadMainTemplate()" style="background:#27ae60;">📥 下载模板</button>
-            <input type="file" id="mainFileInput" class="file-input" accept=".xlsx,.xls,.csv" multiple>
-            <span style="margin:0 6px;font-size:13px;">表头行数：</span>
-            <select id="mainHeaderRows" style="padding:3px 6px;"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select>
-            <ul class="file-list" id="mainFileList"></ul>
+    <div class="upload-section" id="dataIntake">
+        <h3>数据导入</h3>
+        <p class="import-hint">选择数据类型后导入文件。同一批次的总表、小题表与试卷在这里统一管理。</p>
+        <div class="import-controls">
+            <label for="importDataType">数据类型</label>
+            <select id="importDataType"><option value="main">总成绩表</option><option value="sub">小题得分表</option><option value="document">试卷 PDF / Markdown</option></select>
+            <button class="upload-btn" id="importDataBtn" type="button">选择文件并导入</button>
+            <button class="upload-btn" onclick="downloadMainTemplate()" type="button">下载成绩模板</button>
+            <input type="file" id="dataFileInput" class="file-input" accept=".xlsx,.xls,.csv" multiple>
         </div>
-        <div class="upload-section sub">
-            <h3>小题得分表 (可选)</h3>
-            <button class="upload-btn" onclick="document.getElementById('subFileInput').click()" style="background:#f39c12;">选择小题表文件</button>
-            <input type="file" id="subFileInput" class="file-input" accept=".xlsx,.xls,.csv" multiple>
-            <span style="margin:0 6px;font-size:13px;">表头行数：</span>
-            <select id="subHeaderRows" style="padding:3px 6px;"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select>
-            <ul class="file-list" id="subFileList"></ul>
-        </div>
-        <div class="upload-section pdf">
-            <h3>试卷文档(可选)</h3>
-            <button class="upload-btn" onclick="document.getElementById('pdfFileInput').click()" style="background:#9b59b6;">选择PDF/MD试卷</button>
-            <input type="file" id="pdfFileInput" class="file-input" accept=".pdf,.md" multiple>
-            <div id="pdfStatusText" style="font-size:12px;margin-top:5px;color:#888;">未上传PDF</div>
-            <ul class="file-list" id="pdfFileList"></ul>
-            <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
-                <button class="upload-btn small" onclick="refreshAllPdfAnalyses()" style="background:#2ecc71;" title="重新运行个人分析、小题分析等模块以应用科目变更">🔄 刷新分析</button>
-                <button class="upload-btn small" onclick="reparseAllPdfsMinerU()" style="background:#0ea5e9;" title="通过本地 Python 服务重新提交 PDF 到 MinerU 轻量解析">🔄 重新解析（MinerU）</button>
-            </div>
+        <div id="dataImportStatus" class="import-status" role="status" aria-live="polite">支持 Excel、CSV 成绩表和 PDF、Markdown 试卷；可一次选择多个文件。</div>
+        <div class="import-grid">
+            <section><h4>总成绩表</h4>
+                <input type="file" id="mainFileInput" class="file-input" accept=".xlsx,.xls,.csv" multiple>
+                <label for="mainHeaderRows">表头行数：</label><select id="mainHeaderRows"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select>
+                <ul class="file-list" id="mainFileList"></ul>
+            </section>
+            <section><h4>小题得分表（可选）</h4>
+                <input type="file" id="subFileInput" class="file-input" accept=".xlsx,.xls,.csv" multiple>
+                <label for="subHeaderRows">表头行数：</label><select id="subHeaderRows"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select>
+                <ul class="file-list" id="subFileList"></ul>
+            </section>
+            <section><h4>试卷文档（可选）</h4>
+                <input type="file" id="pdfFileInput" class="file-input" accept=".pdf,.md" multiple>
+                <div id="pdfStatusText" class="import-hint">未上传试卷</div><ul class="file-list" id="pdfFileList"></ul>
+                <div class="import-controls">
+                    <button class="upload-btn small" onclick="refreshAllPdfAnalyses()" type="button">刷新分析</button>
+                    <button class="upload-btn small" onclick="reparseAllPdfsMinerU()" type="button">重新解析（MinerU）</button>
+                </div>
+            </section>
         </div>
     </div>
     <details style="margin-bottom:16px;">
@@ -957,9 +137,9 @@
     <div class="info-section" style="line-height:2;">
         <strong style="font-size:14px;">📋 操作流程</strong>
         <ol style="margin:4px 0 0 18px;font-size:13px;">
-            <li><span style="background:#dbeafe;color:#1e40af;padding:0 4px;border-radius:3px;font-weight:bold;">必选</span> 上传<b>主分区</b>总表（含姓名、班级、各科分数/排名）</li>
-            <li><span style="background:#fef3c7;color:#92400e;padding:0 4px;border-radius:3px;font-weight:bold;">可选</span> 上传<b>子分区</b>小题得分表（各题得分与学生答案）</li>
-            <li><span style="background:#f3e8ff;color:#6b21a8;padding:0 4px;border-radius:3px;font-weight:bold;">可选</span> 上传<b>PDF分区</b>试卷文档（辅助AI定位错题知识点）</li>
+            <li><span style="background:#dbeafe;color:#1e40af;padding:0 4px;border-radius:3px;font-weight:bold;">必选</span> 选择<b>总成绩表</b>并导入（含姓名、班级、各科分数/排名）</li>
+            <li><span style="background:#fef3c7;color:#92400e;padding:0 4px;border-radius:3px;font-weight:bold;">可选</span> 选择<b>小题得分表</b>并导入（各题得分与学生答案）</li>
+            <li><span style="background:#f3e8ff;color:#6b21a8;padding:0 4px;border-radius:3px;font-weight:bold;">可选</span> 选择<b>试卷 PDF / Markdown</b>并导入（辅助AI定位错题知识点）</li>
             <li><span style="background:#fee2e2;color:#991b1b;padding:0 4px;border-radius:3px;font-weight:bold;">必做</span> 点击<b>"保存批次"</b>，将当前数据存入批次管理器</li>
             <li><span style="background:#d1fae5;color:#065f46;padding:0 4px;border-radius:3px;font-weight:bold;">分析</span> 切换到<b>"个人分析"/"小题分析"/"趋势分析"</b>Tab进行多维度分析</li>
         </ol>
@@ -1925,7 +1105,7 @@ const DataPool = {
     trendParsedSheets: null,
     getCurrentBatch() { return this.batches.find(b => b.id === this.currentBatchId) || null; },
     addBatch(label, data) {
-        const batch = { id: 'b' + Date.now(), label: label || ('批次' + (this.batches.length + 1)), combinedStudentData: data.combinedStudentData || [], allSubjectHeaders: data.allSubjectHeaders || [], uploadedPdfs: data.uploadedPdfs || [], uploadedFilesData: data.uploadedFilesData || {}, createdAt: new Date().toISOString() };
+        const batch = { id: 'b' + (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(16).slice(2)), label: label || ('批次' + (this.batches.length + 1)), combinedStudentData: data.combinedStudentData || [], allSubjectHeaders: data.allSubjectHeaders || [], uploadedPdfs: data.uploadedPdfs || [], uploadedFilesData: data.uploadedFilesData || {}, createdAt: new Date().toISOString() };
         this.batches.push(batch); this.currentBatchId = batch.id; return batch;
     },
     deleteBatch(id) {
@@ -1939,7 +1119,7 @@ const DataPool = {
         b.combinedStudentData = deepClone(combinedStudentData);
         b.allSubjectHeaders = deepClone(allSubjectHeaders);
         b.uploadedFilesData = deepClone(uploadedFilesData);
-        b.uploadedPdfs = deepClone(uploadedPdfs);
+        b.uploadedPdfs = cloneUploadedPdfsForMemory(uploadedPdfs);
         var ok = await persistBatches();
         refreshBatchList();
         updateBatchInfoBars();
@@ -1947,9 +1127,9 @@ const DataPool = {
     }
 };
 
-function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
-function hasDataValue(v) { return v !== null && v !== undefined && !(typeof v === 'string' && v.trim() === ''); }
+function escapeHtml(s) { return AppCore.escapeHtml(s); }
+function deepClone(obj) { return AppCore.clone(obj); }
+function hasDataValue(v) { return AppCore.hasValue(v); }
 function pickDataValue(primary, fallback, emptyValue) { return hasDataValue(primary) ? primary : (hasDataValue(fallback) ? fallback : (emptyValue !== undefined ? emptyValue : '')); }
 function getStudentDisplayName(stu) { return stu ? (stu.displayName || stu.name || '') : ''; }
 function findStudentByNameOrDisplay(data, name) {
@@ -1958,7 +1138,7 @@ function findStudentByNameOrDisplay(data, name) {
     return (data || []).find(function(s) { return String(s.displayName || '') === target || String(s.name || '') === target; }) || null;
 }
 function applyDuplicateDisplayNames(data) {
-    var groups = {};
+    var groups = Object.create(null);
     (data || []).forEach(function(s) {
         var name = String(s && s.name || '').trim();
         if (!name) return;
@@ -1983,11 +1163,7 @@ function applyDuplicateDisplayNames(data) {
     });
     return duplicateNames;
 }
-function safeDisposeChart(dom) {
-    if (!dom) return;
-    var inst = echarts && echarts.getInstanceByDom(dom);
-    if (inst) try { inst.dispose(); } catch(e) {}
-}
+function safeDisposeChart(dom) { AppCore.charts.dispose(dom); }
 function showModal(msg, cb) {
     var overlay = document.getElementById('modalOverlay');
     var box = document.getElementById('modalMessage');
@@ -2013,133 +1189,51 @@ function showAlert(msg) {
 }
 
 
-function persistBatches() {
-    return new Promise(function(resolve) {
-        var compact = DataPool.batches.map(function(b) {
-            var ufd = {};
-            Object.keys(b.uploadedFilesData || {}).forEach(function(k) {
-                var fe = b.uploadedFilesData[k];
-                ufd[k] = { fileName: fe.fileName, fileType: fe.fileType, studentData: fe.studentData, subjectHeaders: fe.subjectHeaders, headerRows: fe.headerRows };
-            });
-            var pdfs = (b.uploadedPdfs || []).map(function(p) {
-                var copy = Object.assign({}, p);
-                if (copy.fileData) {
-                    var binary = '';
-                    var bytes = copy.fileData;
-                    for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-                    copy.fileDataB64 = btoa(binary);
-                    delete copy.fileData;
-                }
-                delete copy._qi;
-                return copy;
-            });
-            return {
-                id: b.id, label: b.label, createdAt: b.createdAt,
-                combinedStudentData: b.combinedStudentData,
-                allSubjectHeaders: b.allSubjectHeaders,
-                uploadedPdfs: pdfs,
-                uploadedFilesData: ufd,
-                manualQuestionOverrides: b.manualQuestionOverrides
-            };
-        });
-        var json = JSON.stringify(compact);
-        var sizeMB = json.length / 1024 / 1024;
-        var request = indexedDB.open('ScoreAnalysisDB', 1);
-        request.onupgradeneeded = function(e) {
-            var db = e.target.result;
-            if (!db.objectStoreNames.contains('batches')) {
-                db.createObjectStore('batches', { keyPath: 'key' });
-            }
-        };
-        request.onsuccess = function(e) {
-            var db = e.target.result;
-            try {
-                var tx = db.transaction('batches', 'readwrite');
-                var store = tx.objectStore('batches');
-                store.put({ key: 'scoreBatches', value: json });
-                tx.oncomplete = function() {
-                    db.close();
-                    console.log('数据已持久化 (' + sizeMB.toFixed(1) + 'MB)');
-                    resolve(true);
-                };
-                tx.onerror = function() {
-                    console.warn('IndexedDB写入失败: ' + (tx.error && tx.error.message));
-                    var st = document.getElementById('batchStatus');
-                    if (st) st.textContent = '⚠ 保存失败！存储空间不足，请清理旧批次后重试';
-                    resolve(false);
-                };
-            } catch(e) {
-                console.warn('持久化失败 (' + sizeMB.toFixed(1) + 'MB): ' + e.message);
-                var st = document.getElementById('batchStatus');
-                if (st) st.textContent = '⚠ 保存失败！数据量(' + sizeMB.toFixed(1) + 'MB)超过浏览器存储配额，请清理旧批次或减少数据后重试';
-                resolve(false);
-            }
-        };
-        request.onerror = function() {
-            console.warn('IndexedDB无法打开');
-            var st = document.getElementById('batchStatus');
-            if (st) st.textContent = '⚠ 保存失败！无法访问浏览器存储';
-            resolve(false);
-        };
-        request.onblocked = function() {
-            console.warn('IndexedDB被阻塞');
-            resolve(false);
-        };
-    });
+async function persistBatches() {
+    try {
+        const batches = DataPool.batches.map(b => ({
+            id:b.id, label:b.label, createdAt:b.createdAt,
+            combinedStudentData:b.combinedStudentData || [], allSubjectHeaders:b.allSubjectHeaders || [],
+            uploadedFilesData:b.uploadedFilesData || {},
+            uploadedPdfs:(b.uploadedPdfs || []).map(AppCore.compactPdf),
+            manualQuestionOverrides:b.manualQuestionOverrides
+        }));
+        await AppCore.storage.write('scoreBatches', {schemaVersion:2, batches});
+        return true;
+    } catch (error) {
+        console.warn('保存批次失败', error);
+        const status = document.getElementById('batchStatus');
+        if (status) status.textContent = '保存失败：' + error.message + '。当前数据仍保留，请重试。';
+        return false;
+    }
 }
 
-function restoreBatches() {
-    return new Promise(function(resolve) {
-        var request = indexedDB.open('ScoreAnalysisDB', 1);
-        request.onupgradeneeded = function(e) {
-            var db = e.target.result;
-            if (!db.objectStoreNames.contains('batches')) {
-                db.createObjectStore('batches', { keyPath: 'key' });
-            }
-        };
-        request.onsuccess = function(e) {
-            var db = e.target.result;
-            try {
-                var tx = db.transaction('batches', 'readonly');
-                var store = tx.objectStore('batches');
-                var getReq = store.get('scoreBatches');
-                getReq.onsuccess = function() {
-                    db.close();
-                    if (getReq.result && getReq.result.value) {
-                        try {
-                            var batches = JSON.parse(getReq.result.value);
-                            DataPool.batches = batches;
-                            if (batches.length) DataPool.currentBatchId = batches[batches.length - 1].id;
-                            console.log('数据已恢复 (' + batches.length + '个批次)');
-                        } catch(e) { console.warn('恢复数据解析失败', e); }
-                    }
-                    resolve();
-                };
-                getReq.onerror = function() {
-                    db.close();
-                    console.warn('IndexedDB读取失败');
-                    resolve();
-                };
-            } catch(e) {
-                console.warn('恢复数据失败', e);
-                resolve();
-            }
-        };
-        request.onerror = function() {
-            console.warn('IndexedDB无法打开');
-            resolve();
-        };
-        request.onblocked = function() {
-            console.warn('IndexedDB恢复被阻塞');
-            resolve();
-        };
-    });
+async function restoreBatches() {
+    try {
+        const stored = AppCore.storage.decode(await AppCore.storage.read('scoreBatches'), []);
+        const batches = Array.isArray(stored) ? stored : stored.batches;
+        if (!Array.isArray(batches)) throw new Error('批次数据格式异常');
+        DataPool.batches = batches.filter(b => b && b.id && Array.isArray(b.combinedStudentData)).map(b => Object.assign({}, b, {
+            allSubjectHeaders:Array.isArray(b.allSubjectHeaders) ? b.allSubjectHeaders : [],
+            uploadedFilesData:b.uploadedFilesData || {}, uploadedPdfs:(b.uploadedPdfs || []).map(AppCore.compactPdf)
+        }));
+        if (DataPool.batches.length) DataPool.currentBatchId = DataPool.batches[DataPool.batches.length - 1].id;
+        return true;
+    } catch (error) {
+        console.warn('恢复批次失败', error);
+        document.getElementById('batchStatus').textContent = '恢复失败：' + error.message + '。未覆盖已保存数据，请刷新重试。';
+        return false;
+    }
 }
+function cloneUploadedPdfsForMemory(entries) { return AppCore.clone((entries || []).map(AppCore.compactPdf)); }
 
 // ============================================================
 //  局部状态变量
 // ============================================================
 let uploadedFilesData = {};
+let dataEpoch = 0;
+let dataStartupPromise = Promise.resolve();
+let dataOperationBusy = false;
 let combinedStudentData = [];
 let allSubjectHeaders = [];
 let uploadedPdfs = [];
@@ -2399,13 +1493,7 @@ function utilGetTitle(h) {
     m = s.match(/^(.+?)[（(]/);
     return m ? m[1].replace(/_/g, '').replace(/_c\d+$|_col\d+$/g, '').trim() : s.replace(/_/g, '').replace(/_c\d+$|_col\d+$/g, '').trim();
 }
-function utilGetTitleAns(h) {
-    var s = String(h).replace(/_答案$/, '');
-    var m = s.match(/^(.*)[（(]([\d.]+分)[）)]$/);
-    if (m && m[1]) return m[1].replace(/_/g, '').replace(/_c\d+$|_col\d+$/g, '').trim();
-    m = s.match(/^(.+?)[（(]/);
-    return m ? m[1].replace(/_/g, '').replace(/_c\d+$|_col\d+$/g, '').trim() : s.replace(/_/g, '').replace(/_c\d+$|_col\d+$/g, '').trim();
-}
+function utilGetTitleAns(h) { return utilGetTitle(String(h).replace(/_答案$/, '')); }
 function utilGetSubjectFromHeader(h) {
     var parts = String(h).split('_');
     return parts.length > 1 ? parts[0] : '';
@@ -2451,7 +1539,7 @@ function formatCollectiveOptionDistribution(counts, correctAnswer) {
     }).join(' ');
 }
 
-const AI_PROMPT_PREFIX = ['# 角色与任务','你是一位拥有 10 年一线教学数据分析经验的资深教育数据分析师，擅长从大规模考试数据中精准定位学生的知识薄弱点、能力短板，并提供分层级、可落地的提分方案。','','请严格依据下方提供的 JSON 成绩数据，为指定学生生成一份**个性化、诊断性、可执行**的学情分析报告。','','','---','','# 关于输出格式的重要说明','你只能输出纯文本。请将分析结果以 **完整的 Markdown 格式文本** 输出在聊天框中。','用户收到后将手动全选、复制、粘贴到本地文本编辑器（如记事本），保存为 `.md` 文件后可在 Typora/Obsidian/VSCode 等工具中打开查看，或在 Word/WPS 中导入。','请勿尝试创建任何文件、调用任何下载功能——这不在你的能力范围内，强行尝试会产生无法处理的结果。','','','---','','# 输入数据说明','- JSON 中包含学生姓名、班级、各科得分、等级、排名，以及 `weakScoreRateThreshold`。','- `subjectFullMarks`：用户配置的各科满分参考，已自动并入常见异名。','- **重要**：禁止推算「全科统一口径下的总得分率」或强行合成总百分制得分率。','- 重点关注：`subjects` 下各科的 `score`、`grade`、`schoolRank`/`classRank`/`gradeRank`，以及 `weakSubScores`。','- 若存在 `paperMarkdown`/`paperMarkdowns`：可结合题干摘录辅助定位知识点；无摘录时不得臆测。','**知识点推断（硬约束）**：仅在以下条件满足时才允许写具体；否则必须写：无法从现有数据精确定位（需题干/考点标签）。','- ⚡ 重要：「小题/题型薄弱环节」表格中若"对应知识点"列显示"见1.4节"，务必先读完 1.4 节再回头为本题标注知识点。禁止在未读原文的情况下输出"无法定位"。','','','---','','# 分析要求','1. **总分定位与趋势**：用排名位次描述竞争位置；逐科分析 Section 2 中该生的排名路径变化（判断持续进步/退步/波动），结合 Section 3 交叉洞察给出结构性判断；不推算总得分率。','2. **单科表现**：对比各科等级与排名，明确优势学科与短板学科。','3. **小题归因**：逐科遍历 `weakSubScores.items`；完成表格；不得臆测。','4. **分层建议**：短期（1周）、中期（2周）；点名知识点。','5. **计划清单**：用 `[ ]` 复选框。','','','---','','# 输出规范','- 仅输出Markdown；章节标题必须与 `outputSpec.requiredSections` 逐字一致（## 二级标题）。','- 关键结论加粗；优先用表格；末尾附鼓励性结语。','- 版式：章节标题四号黑体加粗；正文宋体小四；数字/英文 Times New Roman。','- 「小题/题型薄弱环节」表格必须含列：题号/模块 | 对应知识点 | 得分/满分 | 得分率 | 学生答案→正确答案 | 失分诊断。','','','---','','# 语言风格','专业、客观、富有建设性；少套话，多可执行动作。','','','---','','# 输入（JSON）','以下为你的输入数据（请只依据该 JSON 生成报告）：',''].join('\n');
+const AI_PROMPT_PREFIX = ['# 角色与任务','你是一位拥有 10 年一线教学数据分析经验的资深教育数据分析师，擅长从大规模考试数据中精准定位学生的知识薄弱点、能力短板，并提供分层级、可落地的提分方案。','','请严格依据下方提供的 JSON 成绩数据，为指定学生生成一份**个性化、诊断性、可执行**的学情分析报告。','','','---','','# 关于输出格式的重要说明','你只能输出纯文本。请将分析结果以 **完整的 Markdown 格式文本** 输出在聊天框中。','用户收到后将手动全选、复制、粘贴到本地文本编辑器（如记事本），保存为 `.md` 文件后可在 Typora/Obsidian/VSCode 等工具中打开查看，或在 Word/WPS 中导入。','请勿尝试创建任何文件、调用任何下载功能——这不在你的能力范围内，强行尝试会产生无法处理的结果。','','','---','','# 输入数据说明','- JSON 中包含学生姓名、班级、各科得分、等级、排名，以及 `weakScoreRateThreshold`。','- `subjectFullMarks`：用户配置的各科满分参考，已自动并入常见异名。','- **重要**：禁止推算「全科统一口径下的总得分率」或强行合成总百分制得分率。','- 重点关注：`subjects` 下各科的 `score`、`grade`、`schoolRank`/`classRank`/`gradeRank`，以及 `weakSubScores`。','- 若存在 `paperMarkdown`/`paperMarkdowns`：可结合题干摘录辅助定位知识点；无摘录时不得臆测。','**知识点推断（硬约束）**：仅在以下条件满足时才允许写具体；否则必须写：无法从现有数据精确定位（需题干/考点标签）。','- ⚡ 重要：「小题/题型薄弱环节」表格中若"对应知识点"列显示"见1.4节"，务必先读完 1.4 节再回头为本题标注知识点。禁止在未读原文的情况下输出"无法定位"。','','','---','','# 分析要求','1. **总分定位与趋势**：用排名位次描述竞争位置；逐科分析 Section 2 中该生的排名路径变化（判断持续进步/退步/波动），结合 Section 3 交叉洞察给出结构性判断；不推算总得分率。','2. **单科表现**：对比各科等级与排名，明确优势学科与短板学科。','3. **小题归因**：逐科遍历 `weakSubScores.items`；完成表格；不得臆测。','4. **分层建议**：短期（1周）、中期（2周）；点名知识点。','5. **计划清单**：用 `[ ]` 复选框。','','','---','','# 输出规范','- 仅输出Markdown；章节标题必须与 `outputSpec.requiredSections` 逐字一致（## 二级标题）。','- 关键结论加粗；优先用表格；末尾附鼓励性结语。','- 版式：章节标题四号黑体加粗；正文使用微软雅黑；数字和英文沿用同一字体。','- 「小题/题型薄弱环节」表格必须含列：题号/模块 | 对应知识点 | 得分/满分 | 得分率 | 学生答案→正确答案 | 失分诊断。','','','---','','# 语言风格','专业、客观、富有建设性；少套话，多可执行动作。','','','---','','# 输入（JSON）','以下为你的输入数据（请只依据该 JSON 生成报告）：',''].join('\n');
 
 const REPORT_COMMON_HARD_RULES = [
     '# 通用硬性规则',
@@ -2626,7 +1714,7 @@ const DEFAULT_VISION_CONFIG = {
     apiKey: '71d5d8ba103341e5aa29ca61a3ce2056.uwfUkIkInmiRrR9n'
 };
 
-const MINERU_API_BASE = String(window.MINERU_API_BASE || localStorage.getItem('mineruApiBase') || 'http://127.0.0.1:8765').replace(/\/+$/, '');
+const MINERU_API_BASE = String(window.MINERU_API_BASE || AppCore.storage.localGet('mineruApiBase', '') || 'http://127.0.0.1:8765').replace(/\/+$/, '');
 
 // Vision config persistence
 function saveVisionConfig() {
@@ -2762,6 +1850,7 @@ function switchTab(tabId) {
     if (tabId === 'tab-seating') refreshSeatingTab();
     if (tabId === 'tab-smart') refreshSmartTab();
     updateAnalysisBackToTop();
+    AppCore.charts.schedule();
 }
 
 function updateBatchInfoBars() {
@@ -2889,6 +1978,7 @@ function renderSavedBatchTags() {
         tag.textContent = b.label + ' (' + b.combinedStudentData.length + '人)';
         tag.title = '点击加载此批次';
         tag.addEventListener('click', function() {
+            if (dataOperationBusy) return;
             document.getElementById('batchSelector').value = b.id;
             loadBatch(b.id);
             updateBatchInfoBars();
@@ -2898,6 +1988,7 @@ function renderSavedBatchTags() {
     });
 }
 function loadBatch(id) {
+    dataEpoch++;
     if (!id) {
         uploadedFilesData = {}; combinedStudentData = []; allSubjectHeaders = []; uploadedPdfs = [];
         DataPool.currentBatchId = null;
@@ -2916,7 +2007,7 @@ function loadBatch(id) {
         combinedStudentData = deepClone(batch.combinedStudentData || []);
         applyDuplicateDisplayNames(combinedStudentData);
         allSubjectHeaders = deepClone(batch.allSubjectHeaders || []);
-        uploadedPdfs = deepClone(batch.uploadedPdfs || []);
+        uploadedPdfs = cloneUploadedPdfsForMemory(batch.uploadedPdfs || []);
         // 旧批次保留了原始表格：按新版表头解析重建派生信息，无需重新上传。
         if (repairImportedBatchData()) DataPool.syncFromGlobalsIfEditing();
         document.getElementById('deleteBatchBtn').style.display = 'inline-block';
@@ -2944,47 +2035,55 @@ document.getElementById('batchSelector').addEventListener('change', function() {
     } else { loadBatch(this.value); }
 });
 document.getElementById('saveBatchBtn').addEventListener('click', async function() {
-    if (!combinedStudentData.length) { await showAlert('请先上传并解析数据！'); return; }
-    var name = document.getElementById('newBatchName').value.trim();
-    var savedLabel = '';
-    var savedCount = combinedStudentData.length;
-    var ok = false;
+    if (dataOperationBusy) return;
+    setDataControlsBusy(true);
+    try {
+        if (!combinedStudentData.length) { await showAlert('请先上传并解析数据！'); return; }
+        var name = document.getElementById('newBatchName').value.trim();
+        var savedLabel = '';
+        var savedCount = combinedStudentData.length;
+        var ok = false;
 
-    if (DataPool.currentBatchId) {
-        var batch = DataPool.getCurrentBatch();
-        if (!batch) return;
-        if (name) batch.label = name;
-        savedLabel = batch.label;
-        ok = await DataPool.syncFromGlobalsIfEditing();
-    } else {
-        name = name || ('批次' + (DataPool.batches.length + 1));
-        var savedBatch = DataPool.addBatch(name, {
-            combinedStudentData: deepClone(combinedStudentData),
-            allSubjectHeaders: deepClone(allSubjectHeaders),
-            uploadedPdfs: cloneUploadedPdfsForMemory(uploadedPdfs),
-            uploadedFilesData: deepClone(uploadedFilesData)
-        });
-        savedLabel = savedBatch.label;
+        if (DataPool.currentBatchId) {
+            var batch = DataPool.getCurrentBatch();
+            if (!batch) return;
+            if (name) batch.label = name;
+            savedLabel = batch.label;
+            ok = await DataPool.syncFromGlobalsIfEditing();
+        } else {
+            name = name || ('批次' + (DataPool.batches.length + 1));
+            var savedBatch = DataPool.addBatch(name, {
+                combinedStudentData: deepClone(combinedStudentData),
+                allSubjectHeaders: deepClone(allSubjectHeaders),
+                uploadedPdfs: cloneUploadedPdfsForMemory(uploadedPdfs),
+                uploadedFilesData: deepClone(uploadedFilesData)
+            });
+            savedLabel = savedBatch.label;
+            refreshBatchList();
+            ok = await persistBatches();
+        }
+
+        if (!ok) return;
+
+        // 保存/更新成功后立即进入“新建批次”状态，避免下一次上传误覆盖刚保存的批次。
         refreshBatchList();
-        ok = await persistBatches();
-    }
-
-    if (!ok) return;
-
-    // 保存/更新成功后立即进入“新建批次”状态，避免下一次上传误覆盖刚保存的批次。
-    refreshBatchList();
-    loadBatch(null);
-    document.getElementById('batchSelector').value = '__new__';
-    document.getElementById('batchStatus').textContent =
-        '已保存「' + savedLabel + '」（' + savedCount + '名学生）；已切换到“+ 新建批次”，可继续上传下一批数据';
+        loadBatch(null);
+        document.getElementById('batchSelector').value = '__new__';
+        document.getElementById('batchStatus').textContent =
+            '已保存「' + savedLabel + '」（' + savedCount + '名学生）；已切换到“+ 新建批次”，可继续上传下一批数据';
+    } finally { setDataControlsBusy(false); }
 });
 document.getElementById('deleteBatchBtn').addEventListener('click', async function() {
-    if (!await showConfirm('确定删除当前批次？')) return;
-    DataPool.deleteBatch(DataPool.currentBatchId);
-    await persistBatches();
-    refreshBatchList();
-    if (DataPool.batches.length) { loadBatch(DataPool.batches[DataPool.batches.length - 1].id); refreshBatchList(); updateBatchInfoBars(); }
-    else { loadBatch(null); document.getElementById('batchSelector').value = '__new__'; }
+    if (dataOperationBusy || !await showConfirm('确定删除当前批次？')) return;
+    setDataControlsBusy(true);
+    const previous = DataPool.batches.slice(), previousId = DataPool.currentBatchId;
+    try {
+        DataPool.deleteBatch(previousId);
+        if (!await persistBatches()) { DataPool.batches = previous; DataPool.currentBatchId = previousId; return; }
+        refreshBatchList();
+        if (DataPool.batches.length) { loadBatch(DataPool.currentBatchId); refreshBatchList(); }
+        else { loadBatch(null); document.getElementById('batchSelector').value = '__new__'; }
+    } finally { setDataControlsBusy(false); }
 });
 document.getElementById('clearCurrentBtn').addEventListener('click', async function() {
     if (combinedStudentData.length && !await showConfirm('确定清空当前数据？（已保存的批次不受影响，之后可上传新考试数据再保存为新批次）')) return;
@@ -3054,28 +2153,12 @@ function showToast(msg, type) {
 }
 function createPdfFileFromEntry(entry) {
     if (/\.md$/i.test(entry.fileName)) return null;
-    if (entry.fileData) {
-        var bytes = entry.fileData;
-        if (bytes instanceof ArrayBuffer) bytes = new Uint8Array(bytes);
-        else if (bytes instanceof Uint8Array) bytes = bytes;
-        else if (Array.isArray(bytes)) bytes = new Uint8Array(bytes);
-        else if (typeof bytes === 'object') {
-            var keys = Object.keys(bytes).filter(function(k) { return /^\d+$/.test(k); }).sort(function(a, b) { return Number(a) - Number(b); });
-            bytes = new Uint8Array(keys.map(function(k) { return bytes[k]; }));
-        }
-        if (!(bytes instanceof Uint8Array) || bytes.length < 5 || bytes[0] !== 37 || bytes[1] !== 80 || bytes[2] !== 68 || bytes[3] !== 70) {
-            throw new Error('原始PDF数据已损坏，无法重新解析。请重新上传PDF文件。');
-        }
-        entry.fileData = bytes;
-        return new File([bytes], entry.fileName, { type: 'application/pdf' });
+    const bytes = AppCore.pdfBytes(entry);
+    if (!bytes || bytes.length < 5 || bytes[0] !== 37 || bytes[1] !== 80 || bytes[2] !== 68 || bytes[3] !== 70) {
+        throw new Error('原始PDF数据缺失或损坏，请重新上传PDF文件');
     }
-    if (entry.fileDataB64) {
-        var binary = atob(entry.fileDataB64);
-        var array = new Uint8Array(binary.length);
-        for (var i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
-        return new File([array], entry.fileName, { type: 'application/pdf' });
-    }
-    throw new Error('无原始文件数据，无法重新解析');
+    entry.fileData = bytes;
+    return new File([bytes], entry.fileName, {type:'application/pdf'});
 }
 async function reparsePdfFromData(entry) {
     var file = createPdfFileFromEntry(entry);
@@ -4394,7 +3477,7 @@ function findTextByItemFallback(lines, item) {
 // ============================================================
 function repairImportedBatchData() {
     var files=Object.values(uploadedFilesData || {});
-    var outdated=files.some(function(file){return Array.isArray(file.rawData) && file.rawData.length && file.parseVersion!==2;});
+    var outdated=files.some(function(file){return Array.isArray(file.rawData) && file.rawData.length && file.parseVersion!==3;});
     if (!outdated) return false;
     files.forEach(function(file) {
         if (!Array.isArray(file.rawData) || !file.rawData.length) return;
@@ -4409,7 +3492,7 @@ function reparseAndCombineData() {
     const mhr = +document.getElementById('mainHeaderRows').value, shr = +document.getElementById('subHeaderRows').value;
     Object.keys(uploadedFilesData).forEach(fid => {
         const fe = uploadedFilesData[fid];
-        parseDataByHeaderRows(fe, fe.rawData, fe.fileType === 'main' ? mhr : shr);
+        if (Array.isArray(fe.rawData) && fe.rawData.length) parseDataByHeaderRows(fe, fe.rawData, fe.fileType === 'main' ? mhr : shr);
     });
     combineAllStudentData(); renderFileList(); displayPersonalResults();
 }
@@ -4447,43 +3530,76 @@ function downloadMainTemplate() {
     URL.revokeObjectURL(a.href);
 }
 
-function handleMultipleFiles(files, type, inputEl) {
-    if (!files.length) return;
-    Array.from(files).forEach(f => { readExcelFile(f, type + '-' + f.name + '-' + Date.now(), type); });
-    inputEl.value = null;
+function setDataControlsBusy(busy) {
+    dataOperationBusy = busy;
+    document.querySelectorAll('#dataIntake button, .file-list button').forEach(function(button) { button.disabled = busy; });
+    ['importDataBtn','importDataType','dataFileInput','mainFileInput','subFileInput','pdfFileInput',
+     'batchSelector','saveBatchBtn','deleteBatchBtn','clearCurrentBtn','mainHeaderRows','subHeaderRows'].forEach(function(id) {
+        const element = document.getElementById(id);
+        if (element) element.disabled = busy;
+    });
 }
 
-function readExcelFile(file, fileId, type) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
+function handleMultipleFiles(files, type, inputEl) { return handleSelectedFiles(files, type, inputEl); }
+
+function handleSelectedFiles(files, type, inputEl) {
+    const selected = Array.from(files || []);
+    if (inputEl) inputEl.value = '';
+    if (!selected.length) return Promise.resolve();
+    const epoch = dataEpoch;
+    return AppCore.imports.enqueue(async function() {
+        await dataStartupPromise;
+        if (epoch !== dataEpoch) { showToast('批次已切换，已取消旧批次的导入', 'info'); return; }
+        setDataControlsBusy(true);
         try {
-            const data = new Uint8Array(e.target.result);
-            const wb = XLSX.read(data, { type: 'array' });
-            const ws = wb.Sheets[wb.SheetNames[0]];
-            const jd = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: true });
-            uploadedFilesData[fileId] = { fileName: file.name, fileType: type, rawData: jd, headerMerges: deepClone(ws['!merges'] || []), studentData: [], subjectHeaders: [] };
-            if (type === 'sub') {
-                const detected = detectImportedDataStartRow(jd) || 3;
-                uploadedFilesData[fileId].headerRows = detected;
-                document.getElementById('subHeaderRows').value = detected;
-            } else {
-                const detected = autoDetectHeaderRowCount(jd);
-                uploadedFilesData[fileId].headerRows = detected;
-                document.getElementById('mainHeaderRows').value = detected;
-            }
-            processExcelData(fileId); renderFileList();
-        } catch (err) { alert('解析失败: ' + err.message); }
-    };
-    reader.readAsArrayBuffer(file);
+            if (type === 'document') await handleDocumentFiles(selected, epoch);
+            else await importWorkbookFiles(selected, type, epoch);
+        } catch (error) {
+            console.warn('导入失败', error);
+            document.getElementById('dataImportStatus').textContent = '导入失败：' + error.message;
+        } finally { setDataControlsBusy(false); }
+    });
 }
 
-function processExcelData(fileId) {
-    const fe = uploadedFilesData[fileId];
-    const hr = fe.fileType === 'main' ? +document.getElementById('mainHeaderRows').value : +document.getElementById('subHeaderRows').value;
-    parseDataByHeaderRows(fe, fe.rawData, hr);
-    combineAllStudentData();
-    if (Object.keys(uploadedFilesData).length === 1) displayPersonalResults();
-    updateBatchInfoBars();
+async function importWorkbookFiles(files, type, epoch) {
+    const staged = [], failures = [];
+    const status = document.getElementById('dataImportStatus');
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        status.textContent = '正在导入 ' + (i + 1) + ' / ' + files.length + '：' + file.name;
+        try {
+            const parsed = await AppCore.imports.readWorkbook(file);
+            if (epoch !== dataEpoch) return;
+            const rows = parsed.rows;
+            if (!rows.length) throw new Error('表格为空');
+            const headerRows = type === 'sub' ? (detectImportedDataStartRow(rows) || 3) : autoDetectHeaderRowCount(rows);
+            const entry = {fileName:file.name, fileType:type, rawData:rows, headerMerges:parsed.merges, studentData:[], subjectHeaders:[]};
+            parseDataByHeaderRows(entry, rows, headerRows);
+            if (!entry.studentData.length || !entry.subjectHeaders.length) throw new Error('未识别到学生或科目，请核对姓名、班级与表头');
+            staged.push(entry);
+        } catch (error) { failures.push(file.name + '：' + error.message); }
+    }
+    if (epoch !== dataEpoch) return;
+    staged.forEach(function(entry) {
+        // Re-uploading a file replaces that file only after successful parsing.
+        Object.keys(uploadedFilesData).forEach(function(id) {
+            const previous = uploadedFilesData[id];
+            if (previous.fileName === entry.fileName && previous.fileType === entry.fileType) delete uploadedFilesData[id];
+        });
+        const fileId = type + '-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+        uploadedFilesData[fileId] = entry;
+    });
+    if (staged.length) {
+        document.getElementById(type === 'main' ? 'mainHeaderRows' : 'subHeaderRows').value = staged[staged.length - 1].headerRows;
+        combineAllStudentData(false);
+        renderFileList(); updateBatchInfoBars();
+        // Hidden reports render on tab activation; importing only refreshes visible analysis.
+        const active = document.querySelector('.tab-nav button.active');
+        if (active && active.dataset.tab !== 'tab-upload') switchTab(active.dataset.tab);
+        await DataPool.syncFromGlobalsIfEditing();
+    }
+    status.textContent = '已导入 ' + staged.length + ' 个文件，当前共 ' + combinedStudentData.length + ' 名学生。' +
+        (failures.length ? '未导入 ' + failures.length + ' 个：' + failures.join('；') : '同名同类型文件会替换原文件。');
 }
 
 function mergeImportedQuestionMetadata(existing, incoming) {
@@ -4512,15 +3628,20 @@ function mergeImportedSubScores(existing, incoming) {
     return result;
 }
 
-function getImportedStudentClassKey(value) {
-    return String(value == null ? '' : value).normalize('NFKC').replace(/\s+/g,'').replace(/班$/,'');
-}
+function getImportedStudentClassKey(value) { return AppCore.classKey(value); }
 
 function combineAllStudentData(syncBatch) {
-    const cm = {}; allSubjectHeaders = []; const hs = new Set();
-    Object.values(uploadedFilesData).forEach(fe => {
-        fe.subjectHeaders.forEach(sh => {
-            const existing = allSubjectHeaders.find(h => h.name === sh.name);
+    const cm = Object.create(null), subjectsByName = new Map(), studentsByName = new Map();
+    allSubjectHeaders = [];
+    const files = Object.values(uploadedFilesData).sort(function(a,b) { return (a.fileType === 'main' ? 0 : 1) - (b.fileType === 'main' ? 0 : 1); });
+    const knownClasses = new Map();
+    files.forEach(fe => (fe.studentData || []).forEach(student => {
+        const name = AppCore.text(student.name), key = AppCore.classKey(student.class);
+        if (key) { const classes = knownClasses.get(name) || new Set(); classes.add(key); knownClasses.set(name, classes); }
+    }));
+    files.forEach(fe => {
+        (fe.subjectHeaders || []).forEach(sh => {
+            const existing = subjectsByName.get(sh.name);
             if (existing) {
                 // Merge subScoreQuestionMap from sub-score table into existing header from main table
                 if (sh.subScoreQuestionMap && typeof sh.subScoreQuestionMap === 'object') {
@@ -4539,39 +3660,43 @@ function combineAllStudentData(syncBatch) {
                 if (Number.isInteger(sh.classIndex) && sh.classIndex >= 0 && !(Number.isInteger(existing.classIndex) && existing.classIndex >= 0)) existing.classIndex = sh.classIndex;
                 if (Number.isInteger(sh.rankIndex) && sh.rankIndex >= 0 && !(Number.isInteger(existing.rankIndex) && existing.rankIndex >= 0)) existing.rankIndex = sh.rankIndex;
             } else {
-                hs.add(sh.name);
-                allSubjectHeaders.push(deepClone(sh));
+                const header = deepClone(sh);
+                subjectsByName.set(sh.name, header);
+                allSubjectHeaders.push(header);
             }
         });
         // Merge student data
-        fe.studentData.forEach(student => {
-            const rawName = String(student.name).trim();
+        (fe.studentData || []).forEach(student => {
+            const rawName = AppCore.text(student.name);
             if (!rawName) return;
             const classKey = getImportedStudentClassKey(student.class);
-            let nameKey = rawName + '||' + classKey;
+            let nameKey = JSON.stringify([rawName, classKey]);
+            const nameKeys = studentsByName.get(rawName) || new Set();
             if (!classKey) {
-                const sameNameKeys = Object.keys(cm).filter(function(k) { return k.indexOf(rawName + '||') === 0; });
-                if (sameNameKeys.length === 1) nameKey = sameNameKeys[0];
+                const sameNameKeys = Array.from(nameKeys);
+                if (sameNameKeys.length === 1 && (knownClasses.get(rawName)?.size || 0) <= 1) nameKey = sameNameKeys[0];
             } else {
-                const emptyKey = rawName + '||';
-                if (!cm[nameKey] && cm[emptyKey]) { cm[nameKey] = cm[emptyKey]; delete cm[emptyKey]; }
+                const emptyKey = JSON.stringify([rawName, '']);
+                if (!cm[nameKey] && cm[emptyKey] && (knownClasses.get(rawName)?.size || 0) <= 1) { cm[nameKey] = cm[emptyKey]; delete cm[emptyKey]; nameKeys.delete(emptyKey); }
             }
             if (!cm[nameKey]) {
-                cm[nameKey] = { name: student.name, class: student.class, candidateType: student.candidateType, schoolType: student.schoolType, subjects: {} };
+                cm[nameKey] = { name: rawName, class: student.class, candidateType: student.candidateType, schoolType: student.schoolType, subjects: {} };
             } else {
                 if (student.class && (fe.fileType === 'main' || !cm[nameKey].class)) cm[nameKey].class = student.class;
                 if (student.candidateType) cm[nameKey].candidateType = student.candidateType;
                 if (student.schoolType) cm[nameKey].schoolType = student.schoolType;
             }
-            Object.keys(student.subjects).forEach(subjName => {
+            nameKeys.add(nameKey); studentsByName.set(rawName, nameKeys);
+            Object.keys(student.subjects || {}).forEach(subjName => {
                 const ex = cm[nameKey].subjects[subjName] || {};
                 const ns = student.subjects[subjName];
+                const prefer = (incoming, previous) => fe.fileType === 'main' ? pickDataValue(incoming, previous, '') : pickDataValue(previous, incoming, '');
                 cm[nameKey].subjects[subjName] = {
-                    score: pickDataValue(ns.score, ex.score, ''),
-                    grade: pickDataValue(ns.grade, ex.grade, ''),
-                    schoolRank: pickDataValue(ns.schoolRank, ex.schoolRank, ''),
-                    classRank: pickDataValue(ns.classRank, ex.classRank, ''),
-                    gradeRank: pickDataValue(ns.gradeRank, ex.gradeRank, ''),
+                    score: prefer(ns.score, ex.score),
+                    grade: prefer(ns.grade, ex.grade),
+                    schoolRank: prefer(ns.schoolRank, ex.schoolRank),
+                    classRank: prefer(ns.classRank, ex.classRank),
+                    gradeRank: prefer(ns.gradeRank, ex.gradeRank),
                     subScores: mergeImportedSubScores(ex.subScores, ns.subScores)
                 };
             });
@@ -4596,11 +3721,11 @@ function updateStudentNameList(data) {
 
 function parseDataByHeaderRows(fileEntry, rawData, overrideHeaderRows) {
     fileEntry.studentData = []; fileEntry.subjectHeaders = [];
-    const ft = fileEntry.fileType; if (!rawData.length) return;
+    const ft = fileEntry.fileType; if (!Array.isArray(rawData) || !rawData.length) return;
     const shr = resolveHeaderRowCount(rawData, overrideHeaderRows);
     const hrArr = getImportedHeaderRows(fileEntry, rawData, shr);
     fileEntry.headerRows = shr;
-    fileEntry.parseVersion = 2;
+    fileEntry.parseVersion = 3;
     let ni = -1, ci = -1, ii = -1, cti = -1, sti = -1;
     const NK = ['姓名','名字','人名'], CK = ['班级','行政班','班名','行政班级'];
     const IK = ['序号','学号','考生号','准考证','编号','考号'];
@@ -4624,7 +3749,7 @@ function parseDataByHeaderRows(fileEntry, rawData, overrideHeaderRows) {
     const rk = ft === 'main' ? ['校名','班名','级名'] : [];
     const fks = ['分数','等级'].concat(rk);
     const km = { '分数':'scoreIndex','等级':'gradeIndex','校名':'schoolIndex','班名':'classIndex','级名':'rankIndex' };
-    const sm = {}; const mhl = rawData.length ? Math.max(...rawData.map(r => r.length)) : 0;
+    const sm = Object.create(null); const mhl = rawData.reduce((max, row) => Math.max(max, (row || []).length), 0);
     let lsn = '';
     const kns = new Set((allSubjectHeaders || []).map(h => String(h?.name || '').trim()).filter(Boolean).concat(['语文','数学','英语','英语笔试','英语听力','物理','化学','生物','历史','地理','政治','道法','道德与法治','总分','理综','文综']));
     const eCa = (t) => { const m = String(t||'').match(/答案\s*[（(]\s*([^）)\s]+)\s*[）)]/); return m ? String(m[1]).trim() : ''; };
@@ -4707,7 +3832,7 @@ function parseDataByHeaderRows(fileEntry, rawData, overrideHeaderRows) {
     if (!fileEntry.subjectHeaders.length) return;
     for (let i = shr; i < rawData.length; i++) {
         const row = rawData[i]; if (!row || row.length <= Math.max(ni, ci)) continue;
-        const stu = { name: row[ni] || '', class: row[ci] || '', candidateType: cti !== -1 ? (row[cti]||'') : '', schoolType: sti !== -1 ? (row[sti]||'') : '', subjects: {} };
+        const stu = { name: AppCore.text(row[ni]), class: AppCore.classLabel(row[ci]), candidateType: cti !== -1 ? (row[cti]||'') : '', schoolType: sti !== -1 ? (row[sti]||'') : '', subjects: {} };
         fileEntry.subjectHeaders.forEach(subj => {
             const sd = { score: subj.scoreIndex !== -1 ? (row[subj.scoreIndex] ?? '') : '', grade: subj.gradeIndex !== -1 ? (row[subj.gradeIndex] ?? '') : '', schoolRank: subj.schoolIndex !== -1 ? row[subj.schoolIndex] || '' : '', classRank: subj.classIndex !== -1 ? row[subj.classIndex] || '' : '', gradeRank: subj.rankIndex !== -1 ? (row[subj.rankIndex] || '') : '', subScores: {} };
             if (Array.isArray(subj.subScoreColumns) && subj.subScoreColumns.length) subj.subScoreColumns.forEach(sc => { sd.subScores[sc.name] = row[sc.index] || ''; });
@@ -4720,6 +3845,15 @@ function parseDataByHeaderRows(fileEntry, rawData, overrideHeaderRows) {
                     sd.subScores[mapKey] = { score: sv, maxScore: q.maxScore ?? '', studentAnswer: av, correctAnswer: q.correctAnswer ?? '' };
                 });
             }
+            sd.score = AppCore.number(sd.score);
+            sd.grade = AppCore.hasValue(sd.grade) ? AppCore.grade(sd.grade) : '';
+            ['schoolRank','classRank','gradeRank'].forEach(function(field) { sd[field] = AppCore.number(sd[field]); });
+            Object.values(sd.subScores).forEach(function(item) {
+                if (item && typeof item === 'object') {
+                    item.score = AppCore.number(item.score); item.maxScore = AppCore.number(item.maxScore);
+                    item.studentAnswer = String(item.studentAnswer ?? '').trim(); item.correctAnswer = String(item.correctAnswer ?? '').trim();
+                }
+            });
             if (stu.name && (hasMeaningfulValue(sd.score) || hasMeaningfulValue(sd.grade) || Object.keys(sd.subScores).length > 0)) stu.subjects[subj.name] = sd;
         });
         if (stu.name) fileEntry.studentData.push(stu);
@@ -4753,7 +3887,7 @@ function detectImportedDataStartRow(data) {
 }
 function resolveHeaderRowCount(rawData, override) { let c = parseInt(override, 10); if (isNaN(c)) c = 1; return Math.max(1, Math.min(c, rawData.length || 1, 3)); }
 function getImportedHeaderRows(fileEntry, rawData, count) {
-    var rows = rawData.slice(0,count).map(function(row){ return (row || []).slice(); });
+    var rows = rawData.slice(0,count).map(function(row){ return (row || []).map(function(value) { return typeof value === 'string' ? AppCore.text(value) : value; }); });
     // 保留原始表格；只在解析副本中恢复 Excel 合并表头。
     (fileEntry.headerMerges || []).forEach(function(merge) {
         if (!merge || !merge.s || !merge.e || merge.s.r >= count) return;
@@ -4803,7 +3937,7 @@ function extractSubjectAndField(hrArr, ci, prev, fks) {
     if (!sn) sn = prev;
     return { subjectName: sn, fieldType: ft, rawFieldName: ft ? '' : rfn };
 }
-function hasMeaningfulValue(v) { if (v === null || v === undefined) return false; if (typeof v === 'number') return !isNaN(v); if (typeof v === 'string') { const t = v.trim(); return t && t !== '-' && t !== '--'; } return true; }
+function hasMeaningfulValue(v) { return AppCore.hasValue(v); }
 function hasMeaningfulRank(v) { const p = parseInt(v, 10); return !isNaN(p) && p > 0; }
 function validateSubjectScore(sd) { return sd && hasMeaningfulValue(sd.score); }
 
@@ -4991,11 +4125,11 @@ function displayPersonalResults() {
         html += `<tr><td>${dispRank}</td>`;
         if (ae) {
             const stl = getCellStyle(ae.student.name);
-            html += `<td ${stl}><div class="rank-display">${getStudentDisplayName(ae.student)}</div><div class="score-display">${ae.subjectData.score||'-'}</div></td><td>${ae.student.class}</td><td>${ae.student.schoolType||ae.student.candidateType||'-'}</td>`;
+            html += `<td ${stl}><div class="rank-display">${getStudentDisplayName(ae.student)}</div><div class="score-display">${pickDataValue(ae.subjectData.score, null, '-')}</div></td><td>${ae.student.class}</td><td>${ae.student.schoolType||ae.student.candidateType||'-'}</td>`;
         } else { html += '<td>-</td><td>-</td><td>-</td>'; }
         dispSubjHeaders.forEach(s => {
             const list = columnsFullDataMap[s.name], entry = list?.[di] || null;
-            if (entry) { const stl = getCellStyle(getStudentDisplayName(entry.student)); html += `<td ${stl}><div class="rank-display">${getStudentDisplayName(entry.student)}</div><div class="score-display">${entry.subjectData.score||''}</div></td>`; }
+            if (entry) { const stl = getCellStyle(getStudentDisplayName(entry.student)); html += `<td ${stl}><div class="rank-display">${getStudentDisplayName(entry.student)}</div><div class="score-display">${pickDataValue(entry.subjectData.score, null, '')}</div></td>`; }
             else html += '<td>-</td>';
         });
         html += '</tr>';
@@ -5028,7 +4162,7 @@ function extractStudentAnalysisData(studentName, weakRateThOpt) {
     const weakRefs = [];
     getMergedSubjectNames(combinedStudentData, allSubjectHeaders).forEach(function(sn) {
         const sd = stuEntry.subjects[sn] || {};
-        const sa = { score: sd.score || 'N/A', grade: sd.grade || 'N/A' };
+        const sa = { score: pickDataValue(sd.score, null, 'N/A'), grade: pickDataValue(sd.grade, null, 'N/A') };
         const sc = String(stuEntry.class||'未知班级').trim(), ct = classPopMap[sc] || 'N/A';
         if (hasMeaningfulRank(sd.schoolRank)) sa.schoolRank = `${sd.schoolRank}/${totalPopulation}`;
         if (hasMeaningfulRank(sd.classRank)) sa.classRank = `${sd.classRank}/${ct}`;
@@ -5347,13 +4481,7 @@ function renderCrossExamBatchPicker() {
     updateCrossExamRankRangeUI();
 }
 
-function crossExamEscapeHtml(value) {
-    return String(value == null ? '' : value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
+function crossExamEscapeHtml(value) { return escapeHtml(value); }
 
 function crossExamNodeColor(count, total) {
     if (count >= total) return '#0F4D92';
@@ -5551,7 +4679,7 @@ function renderCrossExamSankey(batchTop10s) {
     if (chartDom.__chart) {
         try { chartDom.__chart.dispose(); } catch(e) {}
     }
-    var chart = echarts.init(chartDom);
+    var chart = AppCore.charts.init(chartDom);
     chartDom.__chart = chart;
 
     var graphics = batchTop10s.map(function(bt, ei) {
@@ -5641,7 +4769,7 @@ function renderCrossExamSankey(batchTop10s) {
                 position: 'right',
                 distance: 4,
                 color: '#272727',
-                fontFamily: 'Arial, Helvetica, "Microsoft YaHei", sans-serif',
+                fontFamily: AppCore.FONT,
                 fontSize: rankRange.count >= 25 ? 10 : (totalExamCount >= 6 ? 11 : 12),
                 width: labelWidth,
                 overflow: 'truncate',
@@ -5674,14 +4802,7 @@ function renderCrossExamSankey(batchTop10s) {
         chart.setOption({ series: [{ data: baseDisplay.data, links: baseDisplay.links }] }, { lazyUpdate: true });
     });
 
-    if (!chartDom.__crossExamResizeBound) {
-        chartDom.__crossExamResizeBound = true;
-        window.addEventListener('resize', function() {
-            if (chartDom.__chart) {
-                try { chartDom.__chart.resize(); } catch(e) {}
-            }
-        });
-    }
+    AppCore.charts.schedule();
 }
 
 // ============================================================
@@ -5811,11 +4932,15 @@ function buildCollectiveDataSnapshot(students, subjectHeaders) {
         subjQMap:subjQMap,fullScoreMap:fullScoreMap,correctAnswerMap:correctAnswerMap,subjectMetricSources:subjectMetricSources};
 }
 
+let collectiveRenderSnapshot = null;
 function buildCollectiveDataFromCombined() {
-    return buildCollectiveDataSnapshot(combinedStudentData,allSubjectHeaders);
+    return collectiveRenderSnapshot || buildCollectiveDataSnapshot(combinedStudentData,allSubjectHeaders);
 }
 
 function renderCollectiveAll() {
+    const previous = collectiveRenderSnapshot;
+    collectiveRenderSnapshot = buildCollectiveDataSnapshot(combinedStudentData,allSubjectHeaders);
+    try {
     renderCollectiveClassFilter();
     renderCollectiveSubjectFilter();
     renderCollectiveHeatmap();
@@ -5831,6 +4956,7 @@ function renderCollectiveAll() {
     document.getElementById('questionStudentsResult').style.display = 'none';
     renderScoreDistChart();
     populateLevelCheckboxes();
+    } finally { collectiveRenderSnapshot = previous; }
 }
 
 function renderScoreDistChart() {
@@ -5866,7 +4992,7 @@ function renderScoreDistChart() {
         colors.push('rgb(' + r + ',' + g + ',' + b + ')');
     }
     if (chartDom.__chart) try { chartDom.__chart.dispose(); } catch(e) {}
-    const myChart = echarts.init(chartDom);
+    const myChart = AppCore.charts.init(chartDom);
     chartDom.__chart = myChart;
     myChart.setOption({
         tooltip: { trigger: 'axis', formatter: function(p) { const d = p[0]; return d.name + '<br/>人数: ' + d.value + (buckets[d.dataIndex].names.length ? '<br/>含: ' + buckets[d.dataIndex].names.join(', ') : ''); } },
@@ -6645,7 +5771,7 @@ function renderCollectiveHeatmap() {
     chartEl.style.height = chartHeight + 'px';
 
     resetCollectiveHeatmapChart(chartEl);
-    var chart = echarts.init(chartEl, null, {renderer:'svg'});
+    var chart = AppCore.charts.init(chartEl, null, {renderer:'svg'});
     chartEl.__chart = chart;
     var colors = mode === 'anomaly'
         ? ['#f8fafc','#ffedd5','#fdba74','#f97316','#dc2626','#7f1d1d']
@@ -6809,7 +5935,7 @@ function renderCollectiveStudentOverviewHeatmap(model, onlyAbnormal, chartEl, sc
     }
 
     resetCollectiveHeatmapChart(chartEl);
-    var chart = echarts.init(chartEl, null, {renderer:'svg'});
+    var chart = AppCore.charts.init(chartEl, null, {renderer:'svg'});
     chartEl.__chart = chart;
     var maxVal = Math.max(40, Math.ceil(Math.max.apply(null, data.map(function(d){ return Number(d.value[2]) || 0; })) / 10) * 10);
     chart.setOption({
@@ -7970,26 +7096,7 @@ function extractQuestionTextFromPdf(batch, subjectName, itemKey) {
     return foundText;
 }
 
-function notebookPdfBytes(entry) {
-    if (!entry) return null;
-    if (entry.fileData instanceof Uint8Array) return entry.fileData;
-    if (entry.fileData && entry.fileData.buffer) {
-        try { return new Uint8Array(entry.fileData.buffer); } catch(e) {}
-    }
-    if (entry.fileData && typeof entry.fileData === 'object') {
-        var keys = Object.keys(entry.fileData).filter(function(k) { return /^\d+$/.test(k); }).sort(function(a,b) { return Number(a)-Number(b); });
-        if (keys.length) return new Uint8Array(keys.map(function(k) { return entry.fileData[k]; }));
-    }
-    if (entry.fileDataB64) {
-        try {
-            var bin = atob(entry.fileDataB64);
-            var arr = new Uint8Array(bin.length);
-            for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-            return arr;
-        } catch(e) {}
-    }
-    return null;
-}
+function notebookPdfBytes(entry) { try { return AppCore.pdfBytes(entry); } catch (_) { return null; } }
 
 function notebookPdfLineGeometry(textContent) {
     var items = (textContent && textContent.items || []).map(function(it) {
@@ -8262,15 +7369,7 @@ function trendNumericToGrade(value) {
     return TREND_NUMERIC_GRADE_MAP[n] || '';
 }
 
-function normalizeClass(cls) {
-    if (!cls) return '';
-    var s = String(cls).trim();
-    var cnMap = { '一':'1','二':'2','三':'3','四':'4','五':'5','六':'6','七':'7','八':'8','九':'9','十':'10' };
-    s = s.replace(/[一二三四五六七八九十]/g, function(m) { return cnMap[m] || m; });
-    s = s.replace(/班$/, '');
-    s = s.replace(/^(90|80|70|0+)/, '');
-    return s ? s + '班' : '';
-}
+function normalizeClass(cls) { return AppCore.classLabel(cls); }
 
 function buildParsedSheetsFromAllBatches(classFilter) {
     if (DataPool.batches.length === 0) return null;
@@ -8514,21 +7613,9 @@ function initTrendCharts() {
     var ids = ['totalRankChartContainer','radarChartContainer','chineseRankChart','mathRankChart','englishRankChart','physicsRankChart','historyRankChart','daofaRankChart','chemistryRankChart','bioGeoRankChart'];
     ids.forEach(function(id) {
         var el = document.getElementById(id);
-        if (el) trendEchartsInst[id] = echarts.init(el, null, rendererOpt);
+        if (el) trendEchartsInst[id] = AppCore.charts.init(el, null, rendererOpt);
     });
 }
-// Window resize handler for trend charts
-window.addEventListener('resize', function() {
-    var tabTrend = document.getElementById('tab-trend');
-    if (tabTrend && tabTrend.classList.contains('active')) {
-        setTimeout(function() {
-            Object.values(trendEchartsInst).forEach(function(chart) {
-                if (chart && !chart.isDisposed()) { chart.resize(); }
-            });
-        }, 200);
-    }
-});
-
 function renderTrendClassFilter() {
     var sel = document.getElementById('trendClassFilter');
     if (!sel) return;
@@ -9169,9 +8256,11 @@ document.getElementById('mainFileInput').addEventListener('change', function(e) 
 document.getElementById('subFileInput').addEventListener('change', function(e) { handleMultipleFiles(e.target.files, 'sub', this); });
 document.getElementById('mainHeaderRows').addEventListener('change', () => { if (Object.keys(uploadedFilesData).length) reparseAndCombineData(); });
 document.getElementById('subHeaderRows').addEventListener('change', () => { if (Object.keys(uploadedFilesData).length) reparseAndCombineData(); });
-document.getElementById('pdfFileInput').addEventListener('change', async function(e) {
-    const files = Array.from(e.target.files || []).filter(f => /\.(pdf|md)$/i.test(f.name));
+async function handleDocumentFiles(selected, epoch) {
+    const files = selected.filter(f => /\.(pdf|md)$/i.test(f.name));
+    if (!files.length) throw new Error('请选择 PDF 或 Markdown 试卷');
     for (const f of files) {
+        if (epoch !== dataEpoch) return;
         const entry = { id: 'pdf_' + Date.now() + '_' + Math.random().toString(16).slice(2), fileName: f.name, markdown: '', questionIndex: [], status: 'parsing', errorMsg: '', source: '' };
         uploadedPdfs.push(entry); renderPdfList();
         try {
@@ -9219,11 +8308,18 @@ document.getElementById('pdfFileInput').addEventListener('change', async functio
             entry.status = 'ready';
             delete entry._qi; // invalidate cached index
         } catch(err) { entry.status = 'error'; entry.errorMsg = String(err.message || err); }
+        if (epoch !== dataEpoch) return;
         renderPdfList();
     }
-    DataPool.syncFromGlobalsIfEditing();
-    this.value = null;
+    await DataPool.syncFromGlobalsIfEditing();
+    document.getElementById('dataImportStatus').textContent = '试卷导入完成，请在下方查看解析状态。';
+}
+document.getElementById('pdfFileInput').addEventListener('change', function(e) { handleSelectedFiles(e.target.files, 'document', this); });
+document.getElementById('importDataType').addEventListener('change', function() {
+    document.getElementById('dataFileInput').accept = this.value === 'document' ? '.pdf,.md' : '.xlsx,.xls,.csv';
 });
+document.getElementById('importDataBtn').addEventListener('click', function() { document.getElementById('dataFileInput').click(); });
+document.getElementById('dataFileInput').addEventListener('change', function(e) { handleSelectedFiles(e.target.files, document.getElementById('importDataType').value, this); });
 
 // Personal analysis
 document.getElementById('filterBtn').addEventListener('click', displayPersonalResults);
@@ -10500,7 +9596,7 @@ function renderStudentReadableCharts(subjects, weakItems, data, studentName) {
     var trendEl = document.getElementById('studentReportTrendChart');
     if (trendEl) {
         safeDisposeChart(trendEl);
-        var trendChart = echarts.init(trendEl, null, { renderer: 'svg' });
+        var trendChart = AppCore.charts.init(trendEl, null, { renderer: 'svg' });
         var trend = getTotalRankTrendForReport(studentKey);
         if (trend && trend.values.some(function(v) { return v != null; })) {
             var valid = trend.values.filter(function(v) { return v != null; });
@@ -10522,7 +9618,7 @@ function renderStudentReadableCharts(subjects, weakItems, data, studentName) {
     var radarEl = document.getElementById('studentReportRadarChart');
     if (radarEl) {
         safeDisposeChart(radarEl);
-        var radarChart = echarts.init(radarEl, null, { renderer: 'svg' });
+        var radarChart = AppCore.charts.init(radarEl, null, { renderer: 'svg' });
         if (usable.length) {
             radarChart.setOption({
                 title: getReportChartTitle('各科得分率雷达：优势结构一眼可见'),
@@ -10538,7 +9634,7 @@ function renderStudentReadableCharts(subjects, weakItems, data, studentName) {
     var rankEl = document.getElementById('studentReportRankCompareChart');
     if (rankEl) {
         safeDisposeChart(rankEl);
-        var rankChart = echarts.init(rankEl, null, { renderer: 'svg' });
+        var rankChart = AppCore.charts.init(rankEl, null, { renderer: 'svg' });
         var rankRows = getSubjectRankCompareForReport(studentKey, subjects).slice(0, 10);
         if (rankRows.length) {
             var rankPrevColor = '#64748b';
@@ -10642,7 +9738,7 @@ function renderStudentReadableCharts(subjects, weakItems, data, studentName) {
     var weakEl = document.getElementById('studentReportWeakCompareChart');
     if (weakEl) {
         safeDisposeChart(weakEl);
-        var weakChart = echarts.init(weakEl, null, { renderer: 'svg' });
+        var weakChart = AppCore.charts.init(weakEl, null, { renderer: 'svg' });
         var topWeak = weakItems.slice(0, 10);
         if (topWeak.length) {
             weakChart.setOption({
@@ -11045,7 +10141,7 @@ function renderClassTierChart(scores, students, totalName) {
     var el = document.getElementById('classReportTierChart');
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     var gradeOrder = ['A+','A','B+','B','C+','C'];
     var gradeCounts = {};
     scores.forEach(function(s) { if (gradeOrder.indexOf(s.grade) >= 0) gradeCounts[s.grade] = (gradeCounts[s.grade] || 0) + 1; });
@@ -11155,7 +10251,7 @@ function renderClassScoreDistributionChart(scores, totalFullMark) {
     var el = document.getElementById('classReportDistChart');
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     var vals = scores.filter(function(s){ return s.score != null; }).map(function(s){ return s.score; });
     if (!vals.length) { chart.setOption({ title: { text: '总分分布：暂无分数数据', left: 'center', textStyle: { fontSize: 13, color: '#64748b' } } }); return; }
     var distribution = calculateClassScoreRateDistribution(vals, totalFullMark);
@@ -11190,7 +10286,7 @@ function renderClassProgressBarChart(elId, title, rows, color) {
     var el = document.getElementById(elId);
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     if (!rows.length) { chart.setOption({ title: { text: title + '：暂无可对比数据', left: 'center', textStyle: { fontSize: 13, color: '#64748b' } } }); return; }
     var ordered = rows.slice().reverse();
     setReportHorizontalBarOption(chart, { title: title, xName: '名次变化', names: ordered.map(function(r){ return r.name; }), values: ordered.map(function(r){ return Math.abs(r.change); }), color: color, right: 48 });
@@ -11518,7 +10614,7 @@ function renderSubjectChoiceDistributionChart(choiceItems, allRows) {
     var el = document.getElementById('subjectReportChoiceChart');
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     var top = choiceItems.slice(0, 10);
     if (!top.length) { chart.setOption({ title: { text: '选择题答案分布：暂无可用答案数据', left: 'center', textStyle: { fontSize: 13, color: '#64748b' } } }); return; }
     var keys = [];
@@ -11599,7 +10695,7 @@ function renderSubjectClassAvgChart(rows, classNames, fm) {
     var el = document.getElementById('subjectReportClassAvgChart');
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     var data = classNames.map(function(cls) {
         var items = rows.filter(function(r){ return String(r.className) === String(cls) && r.score != null; });
         var avg = items.length ? items.reduce(function(a,b){ return a + b.score; }, 0) / items.length : null;
@@ -11614,7 +10710,7 @@ function renderSubjectGradeDonutChart(rows, subjectPop, tierMode) {
     var el = document.getElementById('subjectReportGradeChart');
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     var order = ['A+','A','B+','B','C+','C'];
     var counts = {};
     var data = [];
@@ -11692,7 +10788,7 @@ function renderSubjectItemRateChart(weakItems) {
     var el = document.getElementById('subjectReportItemRateChart');
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     var top = weakItems.slice(0, 10);
     if (!top.length) { chart.setOption({ title: { text: '小题平均得分率：暂无小题数据', left: 'center', textStyle: { fontSize: 13, color: '#64748b' } } }); return; }
     var ordered = top.slice().reverse();
@@ -11703,7 +10799,7 @@ function renderSubjectFlowChart(flow) {
     var el = document.getElementById('subjectReportFlowChart');
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     chart.setOption({ color: [getSemanticChartColor('升级'), getSemanticChartColor('稳定'), getSemanticChartColor('降级'), getSemanticChartColor('无对比')], title: getReportChartTitle('等级流转统计：升级/降级一眼识别'), tooltip: getReportTooltip(), grid: getReportChartGrid(42, 28, 54, 36), xAxis: getReportCategoryAxis(['升级','稳定','降级','无对比']), yAxis: Object.assign(getReportValueAxis('人数'), { minInterval: 1 }), series: [{ type: 'bar', data: [{ value: flow.up, itemStyle: { color: getSemanticChartColor('升级') } }, { value: flow.stable, itemStyle: { color: getSemanticChartColor('稳定') } }, { value: flow.down, itemStyle: { color: getSemanticChartColor('降级') } }, { value: flow.none, itemStyle: { color: getSemanticChartColor('无对比') } }], barMaxWidth: 34, itemStyle: { borderRadius: [7,7,0,0] }, label: { show: true, position: 'top', color: REPORT_CHART_THEME.text, fontSize: 11, fontWeight: 700 } }] });
     chart.off('click');
     chart.on('click', function(params) {
@@ -11891,7 +10987,7 @@ function renderProgressTopBarChart(elId, title, rows, color, improve) {
     var el = document.getElementById(elId);
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     if (!rows.length) { chart.setOption({ title: { text: title + '：暂无数据', left: 'center', textStyle: { fontSize: 13, color: '#64748b' } } }); return; }
     var ordered = rows.slice().reverse();
     setReportHorizontalBarOption(chart, { title: title, xName: '名次变化', names: ordered.map(function(r){ return r.name; }), values: ordered.map(function(r){ return Math.abs(r.rankDiff); }), color: color, right: 56 });
@@ -11902,7 +10998,7 @@ function renderProgressScatterChart(rows) {
     var el = document.getElementById('progressReportScatterChart');
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     var points = rows.filter(function(r){ return typeof r.rankDiff === 'number'; }).map(function(r){ return { name: r.name, value: [Number(r.diff.toFixed(1)), r.rankDiff], className: r.className }; });
     if (!points.length) { chart.setOption({ title: { text: '分数变化 vs 名次变化：暂无排名数据', left: 'center', textStyle: { fontSize: 13, color: '#64748b' } } }); return; }
     chart.setOption({ title: getReportChartTitle('分数变化 vs 名次变化'), tooltip: { formatter: function(p){ return escapeHtml(p.data.name) + '<br>班级：' + escapeHtml(p.data.className) + '<br>分数变化：' + p.value[0] + '<br>名次变化：' + (p.value[1] > 0 ? '↑' + p.value[1] : (p.value[1] < 0 ? '↓' + Math.abs(p.value[1]) : '→0')); }, backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 12 } }, grid: getReportChartGrid(64, 32, 54, 58), xAxis: Object.assign(getReportValueAxis('分数变化'), { nameLocation: 'middle', nameGap: 32 }), yAxis: Object.assign(getReportValueAxis('名次变化'), { nameLocation: 'middle', nameGap: 42 }), series: [{ type: 'scatter', symbolSize: function(v){ return Math.max(7, Math.min(18, Math.abs(v[1]) / 2 + 7)); }, data: points, itemStyle: { color: function(p){ return p.value[1] > 0 ? REPORT_CHART_THEME.green : (p.value[1] < 0 ? REPORT_CHART_THEME.red : REPORT_CHART_THEME.gray); }, opacity: 0.82 } }] });
@@ -11912,7 +11008,7 @@ function renderProgressClassStackChart(classStats, allResults) {
     var el = document.getElementById('progressReportClassChart');
     if (!el) return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     if (!classStats.length) { chart.setOption({ title: { text: '班级名次变化结构：暂无数据', left: 'center', textStyle: { fontSize: 13, color: '#64748b' } } }); return; }
 
     var stableColor = getSemanticChartColor('持平');
@@ -12594,7 +11690,7 @@ function renderCriticalTrackChart(elId, title, rows, range) {
     var el = document.getElementById(elId);
     if (!el || typeof echarts === 'undefined') return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     if (!rows || !rows.length) {
         chart.setOption({ title: { text: title + '：暂无学生', left: 'center', top: 'middle', textStyle: { fontSize: 13, color: '#64748b' } } });
         return;
@@ -12663,7 +11759,7 @@ function renderCriticalAlluvialChart(data) {
     var el = document.getElementById('criticalAlluvialChart');
     if (!el || typeof echarts === 'undefined') return;
     safeDisposeChart(el);
-    var chart = echarts.init(el, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(el, null, { renderer: 'svg' });
     var model = (data && data.alluvial) || { exams: [], nodes: [], links: [] };
     if (!model.nodes.length) {
         chart.setOption({
@@ -12684,7 +11780,7 @@ function renderCriticalAlluvialChart(data) {
                 fill: CRITICAL_ALLUVIAL_THEME.navy,
                 fontSize: 13,
                 fontWeight: 700,
-                fontFamily: 'inherit'
+                fontFamily: AppCore.FONT
             }
         };
         if (n <= 1) item.left = 'center';
@@ -12765,14 +11861,14 @@ function renderCriticalReadableCharts(data) {
     var distEl = document.getElementById('criticalReportDistanceChart');
     if (distEl) {
         safeDisposeChart(distEl);
-        var distChart = echarts.init(distEl, null, { renderer: 'svg' });
+        var distChart = AppCore.charts.init(distEl, null, { renderer: 'svg' });
         var ordered = data.students.slice().sort(function(a,b){ return a.diff - b.diff; });
         distChart.setOption({ title: getReportChartTitle('临界生距离分数线'), tooltip: getReportTooltip(), grid: getReportChartGrid(76, 48, 54, 36), xAxis: getReportValueAxis('距离线分差'), yAxis: getReportCategoryAxis(ordered.map(function(s){ return s.name; })), series: [{ type: 'bar', data: ordered.map(function(s){ return { value: Number(s.diff.toFixed(1)), itemStyle: { color: s.diff >= 0 ? REPORT_CHART_THEME.orange : REPORT_CHART_THEME.red } }; }), barMaxWidth: 22, itemStyle: { borderRadius: [0,7,7,0] }, label: { show: true, position: 'right', color: REPORT_CHART_THEME.text, fontSize: 11, fontWeight: 700, formatter: function(p){ return (p.value >= 0 ? '+' : '') + p.value; } }, markLine: { symbol: 'none', data: [{ xAxis: 0 }], lineStyle: { color: REPORT_CHART_THEME.slate, type: 'dashed' } } }] });
     }
     var statusEl = document.getElementById('criticalReportStatusChart');
     if (statusEl) {
         safeDisposeChart(statusEl);
-        var statusChart = echarts.init(statusEl, null, { renderer: 'svg' });
+        var statusChart = AppCore.charts.init(statusEl, null, { renderer: 'svg' });
         var above = data.students.filter(function(s){ return s.diff >= 0; }).length;
         var below = data.students.length - above;
         statusChart.setOption(getReportPieOption('临界状态结构', [{ name: '暂过危险', value: above }, { name: '未过预警', value: below }], [REPORT_CHART_THEME.orange, REPORT_CHART_THEME.red]));
@@ -12878,7 +11974,7 @@ function renderCorrelationReadableCharts(data, top, groups, weakGroups) {
     var scatterEl = document.getElementById('corrReportScatterChart');
     if (scatterEl && data && data.points && data.points.length) {
         safeDisposeChart(scatterEl);
-        var sChart = echarts.init(scatterEl, null, { renderer: 'svg' });
+        var sChart = AppCore.charts.init(scatterEl, null, { renderer: 'svg' });
         var maxRank = 0;
         data.points.forEach(function(p) { maxRank = Math.max(maxRank, p.x, p.y); });
         var maxVal = Math.ceil((maxRank + 20) / 10) * 10;
@@ -12926,7 +12022,7 @@ function renderCorrelationReadableCharts(data, top, groups, weakGroups) {
     var levelEl = document.getElementById('corrReportLevelChart');
     if (levelEl) {
         safeDisposeChart(levelEl);
-        var levelChart = echarts.init(levelEl, null, { renderer: 'svg' });
+        var levelChart = AppCore.charts.init(levelEl, null, { renderer: 'svg' });
         var levelOption = getReportPieOption('偏科程度结构', [{ name: '均衡', value: groups['均衡'] }, { name: '轻微偏科', value: groups['轻微偏科'] }, { name: '严重偏科', value: groups['严重偏科'] }], [getSemanticChartColor('均衡'), getSemanticChartColor('轻微'), getSemanticChartColor('严重')]);
         levelOption.series[0].cursor = 'pointer';
         levelChart.setOption(levelOption);
@@ -12939,7 +12035,7 @@ function renderCorrelationReadableCharts(data, top, groups, weakGroups) {
     var weakEl = document.getElementById('corrReportWeakChart');
     if (weakEl) {
         safeDisposeChart(weakEl);
-        var weakChart = echarts.init(weakEl, null, { renderer: 'svg' });
+        var weakChart = AppCore.charts.init(weakEl, null, { renderer: 'svg' });
         var weakData = Object.keys(weakGroups).map(function(k){ return { name: k, value: weakGroups[k] }; });
         var weakOption = getReportPieOption('偏弱科目分布', weakData, weakData.map(function(d, i) { return getSubjectChartColor(d.name, i); }));
         if (weakOption.series && weakOption.series[0]) weakOption.series[0].cursor = 'pointer';
@@ -12953,7 +12049,7 @@ function renderCorrelationReadableCharts(data, top, groups, weakGroups) {
     var topEl = document.getElementById('corrReportTopChart');
     if (topEl) {
         safeDisposeChart(topEl);
-        var topChart = echarts.init(topEl, null, { renderer: 'svg' });
+        var topChart = AppCore.charts.init(topEl, null, { renderer: 'svg' });
         if (!top.length) { topChart.setOption({ title: { text: '偏科程度 Top10：暂无超出阈值学生', left: 'center', textStyle: { fontSize: 13, color: '#64748b' } } }); return; }
         var ordered = top.slice().reverse();
         topChart.setOption({
@@ -13052,7 +12148,7 @@ function renderSeatingReadableCharts(data) {
     var tierEl = document.getElementById('seatingReportTierChart');
     if (tierEl) {
         safeDisposeChart(tierEl);
-        var tierChart = echarts.init(tierEl, null, { renderer: 'svg' });
+        var tierChart = AppCore.charts.init(tierEl, null, { renderer: 'svg' });
         tierChart.setOption(getReportPieOption('学生分层结构', ['领先','中上','临界','后进'].map(function(t){ return { name: t, value: data.tierCounts[t] }; }), [REPORT_CHART_THEME.green, REPORT_CHART_THEME.blue, REPORT_CHART_THEME.orange, REPORT_CHART_THEME.red]));
         tierChart.off('click');
         tierChart.on('click', function(params) {
@@ -13070,7 +12166,7 @@ function renderSeatingReadableCharts(data) {
     var helpEl = document.getElementById('seatingReportHelpChart');
     if (helpEl) {
         safeDisposeChart(helpEl);
-        var helpChart = echarts.init(helpEl, null, { renderer: 'svg' });
+        var helpChart = AppCore.charts.init(helpEl, null, { renderer: 'svg' });
         var subjects = Object.keys(data.subjectCounts).sort(function(a,b){ return data.subjectCounts[b] - data.subjectCounts[a]; });
         if (!subjects.length) { helpChart.setOption({ title: { text: '帮扶科目统计：暂无互补关系', left: 'center', textStyle: { fontSize: 13, color: '#64748b' } } }); return; }
         helpChart.setOption({ title: getReportChartTitle('帮扶科目统计'), tooltip: getReportTooltip(), grid: getReportChartGrid(42, 28, 54, 42), xAxis: getReportCategoryAxis(subjects), yAxis: getReportValueAxis('次数'), series: [{ type: 'bar', data: subjects.map(function(sn){ return data.subjectCounts[sn]; }), color: REPORT_CHART_THEME.purple, barMaxWidth: 28, itemStyle: { borderRadius: [7,7,0,0] }, label: { show: true, position: 'top', color: REPORT_CHART_THEME.text, fontSize: 11, fontWeight: 700 } }] });
@@ -14314,7 +13410,7 @@ async function renderSubjectCorrelation() {
     // Render chart
     var chartDiv = document.getElementById('corrScatterChart');
     if (chartDiv.__chart) try { chartDiv.__chart.dispose(); } catch(e) {}
-    var chart = echarts.init(chartDiv, null, {renderer: 'svg'});
+    var chart = AppCore.charts.init(chartDiv, null, {renderer: 'svg'});
     chartDiv.__chart = chart;
 
     var markLineData = [
@@ -15769,77 +14865,16 @@ function renderProgressAnalysis(baseBatch, cmpBatch, className, subjectName) {
     hideComprehensiveReadableReport();
     output.style.display = 'block';
     document.getElementById('comprehensivePlaceholder').style.display = 'none';
-    var filterClass = className === '__all__' || !className ? null : className;
-    var baseData = baseBatch.combinedStudentData || [];
-    var cmpData = cmpBatch.combinedStudentData || [];
-    var baseDataAll = baseData;
-    var cmpDataAll = cmpData;
-    // Filter by class if needed
-    if (filterClass) {
-        baseData = baseData.filter(function(s) { return normalizeClassName(s.class) === normalizeClassName(filterClass); });
-        cmpData = cmpData.filter(function(s) { return normalizeClassName(s.class) === normalizeClassName(filterClass); });
-    }
-    // Match students by name
-    var isTotal = !subjectName || subjectName === '__total__';
-    var totalName = isTotal ? getTotalSubjectName(allSubjectHeaders, combinedStudentData) : subjectName;
-    var subjectDisplay = isTotal ? '总分' : subjectName;
-    var baseMap = {}; baseData.forEach(function(s) { baseMap[s.name] = s; });
-    var cmpMap = {}; cmpData.forEach(function(s) { cmpMap[s.name] = s; });
-    // Compute rank maps (by selected subject score descending, tie = same rank)
-    function computeRankMap(data) {
-        var list = [];
-        data.forEach(function(s) {
-            var sd = getSubjectDataByAlias(s, totalName);
-            if (!sd) return;
-            var sc = parseFloat(sd.score);
-            if (isNaN(sc)) return;
-            list.push({ name: s.name, score: sc });
-        });
-        list.sort(function(a, b) { return b.score - a.score; });
-        var rankMap = {};
-        var currentRank = 1;
-        for (var i = 0; i < list.length; i++) {
-            if (i > 0 && list[i].score < list[i-1].score) currentRank = i + 1;
-            rankMap[list[i].name] = currentRank;
-        }
-        return rankMap;
-    }
-    var baseRankMap = computeRankMap(baseDataAll);
-    var cmpRankMap = computeRankMap(cmpDataAll);
-    // Find common students
-    var results = [];
-    var baseNames = Object.keys(baseMap);
-    baseNames.forEach(function(name) {
-        var bs = baseMap[name], cs = cmpMap[name];
-        if (!cs) return;
-        if (!bs.class) return;
-        var bsd = getSubjectDataByAlias(bs, totalName);
-        var csd = getSubjectDataByAlias(cs, totalName);
-        var baseScore = (bsd && !isNaN(parseFloat(bsd.score))) ? parseFloat(bsd.score) : NaN;
-        var cmpScore = (csd && !isNaN(parseFloat(csd.score))) ? parseFloat(csd.score) : NaN;
-        if (isNaN(baseScore) || isNaN(cmpScore)) return;
-        var baseRank = baseRankMap[name] || '-';
-        var cmpRank = cmpRankMap[name] || '-';
-        results.push({
-            name: name, className: bs.class,
-            baseScore: baseScore, cmpScore: cmpScore,
-            diff: cmpScore - baseScore,
-            baseRank: baseRank, cmpRank: cmpRank,
-            rankDiff: (typeof baseRank === 'number' && typeof cmpRank === 'number') ? (baseRank - cmpRank) : '-'
-        });
-    });
-    if (!results.length) {
+    var progress = buildProgressAnalysisData(baseBatch, cmpBatch, className, subjectName);
+    if (!progress || !progress.results.length) {
         container.innerHTML = '<div class="no-data">两个批次之间没有匹配的学生数据</div>';
         return;
     }
-    // Sort by score difference
-    results.sort(function(a, b) { return b.diff - a.diff; });
-    // Per-class stats
-    var classMap = {};
-    results.forEach(function(r) {
-        if (!classMap[r.className]) classMap[r.className] = [];
-        classMap[r.className].push(r);
-    });
+    var filterClass = progress.className;
+    var subjectDisplay = progress.subjectDisplay;
+    var results = progress.results;
+    var classMap = Object.create(null);
+    results.forEach(function(r) { (classMap[r.className] || (classMap[r.className] = [])).push(r); });
     var classNames = Object.keys(classMap).sort();
     // Build summary table
     var html = '<h4 style="margin-bottom:8px;">' + escapeHtml(baseBatch.label) + ' → ' + escapeHtml(cmpBatch.label) + '（' + escapeHtml(filterClass ? normalizeClassName(filterClass) : '全部班级') + '，按' + subjectDisplay + '变化）</h4>';
@@ -15942,43 +14977,7 @@ classDiffEchartsInst = {};
 var heatmapReportExportContext = null;
 var gradeDistributionExportContext = null;
 
-function normalizeClassName(cls) {
-    if (!cls) return '未知班级';
-    var s = String(cls).trim();
-    var hadBan = s.endsWith('班');
-    if (hadBan) s = s.slice(0, -1);
-    s = s.replace(/[（(]/g, '').replace(/[）)]/g, '');
-    if (/^[初高]/.test(s)) s = s.replace(/^[初高][一二三四]/, '');
-    s = s.replace(/^[七八九]年级?/, '');
-    s = s.replace(/^[一二三]年级?/, '');
-    s = s.replace(/^九年/, '');
-    s = s.replace(/^\d+年/, '');
-    // Handle "901"→"01班", "1201"→"01班" (三位/四位年级代码)
-    var gcm = s.match(/^(\d{3,4})$/);
-    if (gcm) {
-        var digits = gcm[1];
-        if (digits.length === 3) {
-            var gn = parseInt(digits[0], 10);
-            if (gn >= 7 && gn <= 9) return String(parseInt(digits.slice(1), 10)).padStart(2, '0') + '班';
-        } else if (digits.length === 4) {
-            var gn2 = parseInt(digits.slice(0, 2), 10);
-            if (gn2 >= 10 && gn2 <= 12) return String(parseInt(digits.slice(2), 10)).padStart(2, '0') + '班';
-        }
-    }
-    var nums = s.match(/\d+/g);
-    if (nums && nums.length > 0) {
-        return String(parseInt(nums[nums.length - 1], 10)).padStart(2, '0') + '班';
-    }
-    var cnChars = ['十','九','八','七','六','五','四','三','二','一'];
-    var cnVals = {'十':10,'九':9,'八':8,'七':7,'六':6,'五':5,'四':4,'三':3,'二':2,'一':1};
-    var lastIdx = -1, lastVal = 0;
-    cnChars.forEach(function(ch) {
-        var idx = s.lastIndexOf(ch);
-        if (idx >= lastIdx) { lastIdx = idx; lastVal = cnVals[ch]; }
-    });
-    if (lastIdx >= 0) return String(lastVal).padStart(2, '0') + '班';
-    return hadBan ? String(cls).trim() : String(cls).trim() + '班';
-}
+function normalizeClassName(cls) { return AppCore.classLabel(cls, '未知班级'); }
 
 function hexToRgba(hex, alpha) {
     var r = parseInt(hex.slice(1, 3), 16);
@@ -16266,7 +15265,7 @@ function renderClassDiffMeanLineChart(displaySubjects) {
     var chartDiv = document.getElementById('classDiffMeanLineChart');
     var existing = chartDiv.__chart;
     if (existing) try { existing.dispose(); } catch(e) {}
-    var chart = echarts.init(chartDiv, null, {renderer:'svg'});
+    var chart = AppCore.charts.init(chartDiv, null, {renderer:'svg'});
     chartDiv.__chart = chart;
     chart.setOption({
         tooltip: { trigger: 'axis' },
@@ -16374,7 +15373,7 @@ function renderClassDiffHeatmap(stats, classNames, displaySubjects) {
     chartDiv.style.height = chartH + 'px';
     var existing = chartDiv.__chart;
     if (existing) try { existing.dispose(); } catch(e) {}
-    var chart = echarts.init(chartDiv, null, {renderer:'svg'});
+    var chart = AppCore.charts.init(chartDiv, null, {renderer:'svg'});
     chartDiv.__chart = chart;
     chart.setOption({
         tooltip: {
@@ -16761,7 +15760,7 @@ function renderClassDiffGradeChart(selectedSubjectName, stats, classNames, grade
             label: { show: true, position: 'inside', fontSize: 13, formatter: function(p) { return p.value > 0 ? p.value : ''; } }
         };
     });
-    var chart = echarts.init(chartDiv, null, {renderer:'svg'});
+    var chart = AppCore.charts.init(chartDiv, null, {renderer:'svg'});
     chartDiv.__chart = chart;
     chart.setOption({
         tooltip: {
@@ -16948,7 +15947,7 @@ function updateClassDiffDistributionChart(labels, datasets, rankedStudents, sele
     var chartDiv = document.getElementById('classDiffDistributionChart');
     if (!chartDiv) return;
     if (classDiffEchartsInst.mainChart) try { classDiffEchartsInst.mainChart.dispose(); } catch(e) {}
-    var chart = echarts.init(chartDiv, null, {renderer: 'svg'});
+    var chart = AppCore.charts.init(chartDiv, null, {renderer: 'svg'});
     classDiffEchartsInst.mainChart = chart;
     chart.setOption({
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
@@ -17010,7 +16009,7 @@ function updateClassDiffDistributionExtraCharts(labels, classList, classSegmentC
             var barId = 'classDiffEchartsBar_' + idx;
             var barEl = document.getElementById(barId);
             safeDisposeChart(barEl);
-            var barChart = echarts.init(barEl, null, {renderer:'svg'});
+            var barChart = AppCore.charts.init(barEl, null, {renderer:'svg'});
             if (isMulti) {
                 var patternChars = ['/', '\\', '-', 'x', 'o', 'O', '.', '*'];
                 var batchSeries = multiBatchRankData.map(function(bd, bi) {
@@ -17118,7 +16117,7 @@ function updateClassDiffDistributionExtraCharts(labels, classList, classSegmentC
         var totalByClass = classList.map(function(cls) { return classSegmentCounts[cls].reduce(function(a,b){return a+b;}, 0); });
         var pieEl = document.getElementById('classDiffEchartsPie');
         safeDisposeChart(pieEl);
-        var pieChart = echarts.init(pieEl, null, {renderer:'svg'});
+        var pieChart = AppCore.charts.init(pieEl, null, {renderer:'svg'});
         pieChart.setOption({
             tooltip: { trigger: 'item', textStyle: { fontSize: 18 } },
             legend: { orient: 'vertical', left: 10, data: classList, textStyle: { fontSize: 18 } },
@@ -17178,7 +16177,7 @@ function renderClassDiffBoxPlot() {
     });
     // Render box plot
     safeDisposeChart(chartDiv);
-    var chart = echarts.init(chartDiv, null, {renderer:'svg'});
+    var chart = AppCore.charts.init(chartDiv, null, {renderer:'svg'});
     var series = [{
         name: '箱线图', type: 'boxplot', data: boxData,
         itemStyle: { color: 'rgba(84,112,198,0.3)', borderColor: '#1e3a5f', borderWidth: 2.5 },
@@ -17223,20 +16222,19 @@ document.getElementById('classDiffBoxSubject').addEventListener('change', functi
 // Try to load PDF.js
 try { var s2 = document.createElement('script'); s2.src = './pdf.min.js'; document.head.appendChild(s2); } catch(e) {}
 
-// Initial refresh (delayed restore for smooth startup)
-document.getElementById('batchStatus').textContent = '⏳ 正在恢复上次数据…';
-setTimeout(async function() {
-    await restoreBatches();
-    refreshBatchList();
-    if (DataPool.currentBatchId) {
-        loadBatch(DataPool.currentBatchId);
-    }
-    // Re-render the currently active tab so it's not stuck on "no data" placeholder
-    var activeTabBtn = document.querySelector('.tab-nav button.active');
-    if (activeTabBtn && combinedStudentData.length) {
-        switchTab(activeTabBtn.dataset.tab);
-    }
-}, 60);
+// Restore before imports/saves to avoid a late restore replacing newly imported data.
+setDataControlsBusy(true);
+document.getElementById('batchStatus').textContent = '正在恢复上次数据…';
+dataStartupPromise = (async function() {
+    try {
+        const ok = await restoreBatches();
+        refreshBatchList();
+        if (DataPool.currentBatchId) loadBatch(DataPool.currentBatchId);
+        else if (ok) document.getElementById('batchStatus').textContent = '请先上传数据再保存批次';
+        const active = document.querySelector('.tab-nav button.active');
+        if (active && combinedStudentData.length) switchTab(active.dataset.tab);
+    } finally { setDataControlsBusy(false); }
+})();
 
 // Initialize Vision AI UI
 (function initVisionUI() {
@@ -17315,37 +16313,15 @@ function buildSeatingProfiles(className) {
 // ============================================================
 //  IndexedDB 座位快照存储
 // ============================================================
-function persistSeatingSnapshots(snapshots) {
-    return new Promise(function(resolve) {
-        var request = indexedDB.open('ScoreAnalysisDB', 1);
-        request.onsuccess = function(e) {
-            var db = e.target.result;
-            try {
-                var tx = db.transaction('batches', 'readwrite');
-                var store = tx.objectStore('batches');
-                store.put({ key: 'seating_snapshots', value: JSON.stringify(snapshots.slice(-10)) });
-                tx.oncomplete = function() { db.close(); resolve(true); };
-                tx.onerror = function() { db.close(); resolve(false); };
-            } catch(e) { resolve(false); }
-        };
-        request.onerror = function() { resolve(false); };
-    });
+async function persistSeatingSnapshots(snapshots) {
+    try { await AppCore.storage.write('seating_snapshots', snapshots.slice(-10)); return true; }
+    catch (error) { console.warn('保存座位快照失败', error); return false; }
 }
-function restoreSeatingSnapshots() {
-    return new Promise(function(resolve) {
-        var request = indexedDB.open('ScoreAnalysisDB', 1);
-        request.onsuccess = function(e) {
-            var db = e.target.result;
-            try {
-                var tx = db.transaction('batches', 'readonly');
-                var store = tx.objectStore('batches');
-                var getReq = store.get('seating_snapshots');
-                getReq.onsuccess = function() { db.close(); var data = getReq.result; resolve(data ? JSON.parse(data.value) : []); };
-                getReq.onerror = function() { db.close(); resolve([]); };
-            } catch(e) { resolve([]); }
-        };
-        request.onerror = function() { resolve([]); };
-    });
+async function restoreSeatingSnapshots() {
+    try {
+        const snapshots = AppCore.storage.decode(await AppCore.storage.read('seating_snapshots'), []);
+        return Array.isArray(snapshots) ? snapshots : [];
+    } catch (error) { console.warn('恢复座位快照失败', error); return []; }
 }
 
 // ============================================================
@@ -18269,7 +17245,7 @@ SeatingModule.prototype.executeRotation = function() {
 
 // 快照管理（IndexedDB）
 SeatingModule.prototype.saveSnapshot = function() {
-    var snapshot = { id: Date.now(), label: '快照 ' + (this.historySnapshots.length + 1) + ' (' + new Date().toLocaleString() + ')', students: JSON.parse(JSON.stringify(this.students)), seatMap: this.seatMap.slice() };
+    var snapshot = { id: Date.now(), label: '快照 ' + (this.historySnapshots.length + 1) + ' (' + new Date().toLocaleString() + ')', students: deepClone(this.students), seatMap: this.seatMap.slice() };
     this.historySnapshots.push(snapshot);
     if (this.historySnapshots.length > 10) this.historySnapshots = this.historySnapshots.slice(-10);
     this.currentSnapshotIndex = this.historySnapshots.length - 1;
@@ -18281,7 +17257,7 @@ SeatingModule.prototype.loadSnapshot = function(index) {
     if (index < 0 || index >= this.historySnapshots.length) return;
     var snap = this.historySnapshots[index];
     if (!confirm('确定回滚到"' + snap.label + '"？当前数据将被覆盖。')) return;
-    this.students = JSON.parse(JSON.stringify(snap.students));
+    this.students = deepClone(snap.students);
     this.seatMap = snap.seatMap.slice();
     this.currentSnapshotIndex = index;
     persistSeatingSnapshots(this.historySnapshots);
@@ -18377,7 +17353,7 @@ SeatingModule.prototype.closeHelpGraph = function() {
 };
 SeatingModule.prototype.renderHelpGraph = function(chartEl) {
     safeDisposeChart(chartEl);
-    var chart = echarts.init(chartEl, null, { renderer: 'svg' });
+    var chart = AppCore.charts.init(chartEl, null, { renderer: 'svg' });
     var self = this;
     var seatedNames = this.seatMap.filter(function(n) { return n && n !== '\u{1F6AB}'; });
     var nodes = this.students.map(function(s) {

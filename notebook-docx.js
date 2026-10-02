@@ -10,7 +10,7 @@ function docxTextRun(text) {
         if (i) out += '<w:br/>';
         out += '<w:t xml:space="preserve">' + xmlEscapeDocx(parts[i]) + '</w:t>';
     }
-    return '<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="宋体" w:cs="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>' + out + '</w:r>';
+    return '<w:r><w:rPr><w:rFonts w:ascii="Microsoft YaHei" w:hAnsi="Microsoft YaHei" w:eastAsia="微软雅黑" w:cs="Microsoft YaHei"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>' + out + '</w:r>';
 }
 
 function docxStyledRun(text, opts) {
