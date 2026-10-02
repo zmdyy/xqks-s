@@ -28,6 +28,9 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         const page = await browser.newPage({viewport:{width:1440,height:1000}}), errors = [];
         page.on('pageerror', e => errors.push(e.message));
         let workerLoads=0; page.on('response', r => { if(r.url().endsWith('/spreadsheet-worker.js') && r.ok()) workerLoads++; });
+        await page.route('**/reports.js',async route=>{await new Promise(r=>setTimeout(r,120));await route.continue()});
+        await page.route('**/class-comparison.js',async route=>{await new Promise(r=>setTimeout(r,40));await route.continue()});
+        await page.route('**/seating.js',async route=>{await new Promise(r=>setTimeout(r,80));await route.continue()});
         await page.goto(url); await page.waitForFunction(()=>!document.getElementById('importDataBtn').disabled);
         await page.evaluate(()=>{window.mergeCalls=0;window.originalMerge=combineAllStudentData;combineAllStudentData=function(...args){window.mergeCalls++;return window.originalMerge(...args)}});
         const main1=workbook('总表一.xlsx',head.concat([[' 同名 ','８０１','０','c',0,'C'],['同名','802',60,'A',100,'A'],['李四','801',55,'B',95,'B']]),merges);
@@ -89,6 +92,36 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
             if(model.results.length!==5)throw new Error('同名学生进退步模型丢失');
             renderProgressAnalysis(base,next,'__all__','物理');
         });
+        // Exercise the extracted modules with real report generation, not just tab navigation.
+        await page.evaluate(async()=>{
+            const saved={students:combinedStudentData,batches:DataPool.batches,id:DataPool.currentBatchId,trend:DataPool.trendParsedSheets};
+            try {
+                const roster=Array.from({length:8},(_,i)=>{const s=AppCore.clone(saved.students[i%saved.students.length]);s.name=s.displayName='模块学生'+i;s.class='01班';Object.values(s.subjects).forEach(sd=>{sd.score=20+i*5;sd.grade=i>4?'A':'B';sd.gradeRank=sd.schoolRank=sd.classRank=''});return s});
+                combinedStudentData=roster;applyFallbackGradeRanks(roster,allSubjectHeaders);calculateFallbackRanks(roster,allSubjectHeaders);
+                const current=Object.assign(AppCore.clone(saved.batches[0]),{id:'module-current',label:'模块本次',combinedStudentData:roster});
+                const previous=AppCore.clone(current);previous.id='module-previous';previous.label='模块对照';previous.combinedStudentData.forEach(s=>Object.values(s.subjects).forEach(sd=>sd.score-=5));
+                DataPool.batches=[previous,current];DataPool.currentBatchId=current.id;DataPool.trendParsedSheets=null;
+                refreshBatchList();refreshComprehensiveTab();refreshSmartTab();
+                if(!renderStudentReadableReport(roster[0].name,.6))throw new Error('个人图文报告未生成');
+                if(!renderClassReadableReport('01班',previous.id))throw new Error('班级图文报告未生成');
+                if(!renderSubjectTeachingReadableReport(['01班'],'物理',previous.id,'grade'))throw new Error('单科图文报告未生成');
+                document.getElementById('progressBaseBatch').value=previous.id;document.getElementById('progressCompareBatch').value=current.id;document.getElementById('progressClassFilter').value='01班';document.getElementById('progressSubjectFilter').value='物理';
+                if(!renderProgressReadableReport())throw new Error('进退步图文报告未生成');
+                document.getElementById('criticalClassFilter').value='01班';document.getElementById('criticalSubjectFilter').value='物理';document.getElementById('criticalLineMode').value='ratio';document.getElementById('criticalPassLine').value='42';
+                if(!renderCriticalReadableReport())throw new Error('临界预警图文报告未生成');
+                document.getElementById('corrClassFilter').value='01班';document.getElementById('corrXSubject').value='物理';document.getElementById('corrYSubject').value='总分';
+                if(!renderCorrelationReadableReport())throw new Error('学科关联图文报告未生成');
+                if(!renderSeatingReadableReport('01班'))throw new Error('座位图文报告未生成');
+                const seat=new SeatingModule(document.getElementById('seating-module-root'));seat.init(buildSeatingProfiles('01班'));seat.saveSnapshot();
+                if(seat.students.length!==8||!seat.historySnapshots.length)throw new Error('座位交互或快照异常');
+                renderClassDiffAll();renderClassDiffGradeDistribution();renderClassDiffRankDistribution();renderClassDiffBoxPlot();
+                window.dispatchEvent(new Event('beforeprint'));window.dispatchEvent(new Event('afterprint'));
+                if(!document.getElementById('comprehensiveReadableReportContent').textContent)throw new Error('图文报告内容为空');
+            } finally {
+                combinedStudentData=saved.students;DataPool.batches=saved.batches;DataPool.currentBatchId=saved.id;DataPool.trendParsedSheets=saved.trend;
+                refreshBatchList();refreshComprehensiveTab();refreshSmartTab();
+            }
+        });
         // Serialized writes capture the input snapshot; later failures do not poison subsequent saves.
         await page.evaluate(async()=>{const a=[{v:1}];const first=AppCore.storage.write('test_queue',a);a[0].v=2;await first;if((await AppCore.storage.read('test_queue'))[0].v!==1)throw new Error('写入快照被后续编辑污染');await Promise.all([AppCore.storage.write('test_queue',[1]),AppCore.storage.write('test_queue',[2])]);if((await AppCore.storage.read('test_queue'))[0]!==2)throw new Error('并发写入顺序异常');});
         // Legacy JSON/b64 migration and old files without rawData must load without throwing.
@@ -105,6 +138,6 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         const fallback=await page.evaluate(async()=>{const original=window.Worker;try{window.Worker=class{constructor(){throw new DOMException('blocked','SecurityError')}};const file=new File(['姓名,班级,物理\n测试,01班,1'],'测试.csv');return (await AppCore.imports.readWorkbook(file)).rows.length}finally{window.Worker=original}});
         assert.equal(fallback,2);
         assert.deepEqual(errors,[],'browser uncaught exceptions');
-        console.log('PASS browser: worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, heatmap, progress, storage order and legacy migration');
+        console.log('PASS browser: worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
     } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(error=>{console.error(error);process.exitCode=1});
