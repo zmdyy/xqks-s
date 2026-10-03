@@ -870,3 +870,19 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 #seating-module-root .sm-population-table th,#seating-module-root .sm-population-table td { padding:6px; border:1px solid var(--seating-border); }
 #seating-module-root .sm-population-table input[type="number"] { width:100%; min-width:60px; max-width:100px; box-sizing:border-box; font:inherit; }
 #seating-module-root .sm-population-table input[type="checkbox"] { width:auto; vertical-align:middle; }
+
+/* Edit physical seat positions without exposing placeholder cells as seats. */
+#seating-module-root .sm-seat-tools { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 4px 12px; }
+#seating-module-root .sm-seat-tools .btn2 { width:auto; margin:0; padding:7px 12px; font:inherit; font-size:12px; }
+#seating-module-root .sm-seat-tools [hidden] { display:none; }
+#seating-module-root #sm-addSeatHint { color:var(--seating-text2); font-size:12px; }
+#seating-module-root .sm-add-seat { min-width:0; min-height:72px; border:1px dashed #64748b; border-radius:6px; background:#f8fafc; color:#334155; font:inherit; font-size:24px; cursor:pointer; }
+#seating-module-root .sm-add-seat:hover,#seating-module-root .sm-add-seat:focus-visible { background:#dbeafe; border-color:#2563eb; color:#1d4ed8; outline:2px solid #93c5fd; }
+#seating-module-root .sm-add-edge { min-height:40px; }
+#seating-module-root .sm-seat-spacer { min-width:0; min-height:72px; }
+#seating-module-root .sm-empty-seat-label { color:#64748b; font-size:12px; }
+#seating-module-root .sm-position-note { margin:0 0 8px; color:var(--seating-text2); font-size:12px; }
+#seating-module-root .sm-position-table { width:100%; border-collapse:collapse; font-size:14px; color:var(--seating-text); }
+#seating-module-root .sm-position-table th,#seating-module-root .sm-position-table td { padding:8px 10px; border-bottom:1px solid var(--seating-border); text-align:left; }
+#seating-module-root .sm-position-table th:last-child,#seating-module-root .sm-position-table td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+#seating-module-root .sm-position-table tbody tr:first-child { font-weight:700; background:var(--seating-surface); }

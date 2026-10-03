@@ -2,8 +2,8 @@
   "name": "xqks-s",
   "private": true,
   "scripts": {
-    "test": "node tests/core.test.cjs && node tests/seating.test.cjs && node tests/seating-academic.test.cjs",
-    "test:browser": "node tests/browser.test.cjs && node tests/seating-browser.test.cjs && node tests/seating-search-browser.test.cjs"
+    "test": "node tests/core.test.cjs && node tests/seating.test.cjs && node tests/seating-academic.test.cjs && node tests/seating-layout.test.cjs",
+    "test:browser": "node tests/browser.test.cjs && node tests/seating-browser.test.cjs && node tests/seating-search-browser.test.cjs && node tests/seating-layout-browser.test.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"

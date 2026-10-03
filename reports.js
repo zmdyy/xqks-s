@@ -3104,20 +3104,20 @@ function buildSeatingReadableData(className) {
     if (!profiles.length) return null;
     var students = profiles.map(function(p) { return {name:p.name,rank:p.totalRank,percentile:p.totalPercentile,sampleCount:p.sampleCount,tier:p.tier,leads:p.leads || [],weaks:p.weaks || [],biased:p.biased,subjects:p.subjects}; });
     var byName=new Map(students.map(function(s){return [s.name,s];})),seatMap;
-    if(saved?.seatMap)seatMap=saved.seatMap.map(function(name){return name==='🚫'?{blocked:true}:byName.get(name) || null;});
+    if(saved?.seatMap)seatMap=saved.seatMap.map(function(name,i){return saved.seatIds?.[i]===null?{absent:true}:name==='🚫'?{blocked:true}:byName.get(name) || null;});
     else {
         seatMap=new Array(Math.max(Math.ceil(students.length/8)*8,8)).fill(null);
         students.forEach(function(s,i){var row=Math.floor(i/8),col=i%8;seatMap[row*8+(row%2===0?col:7-col)]=s;});
     }
     var tierCounts = Object.fromEntries(['L1','L2','L3','L4','L5','L6','L7','L8','数据不足'].map(function(t){return [t,0];}));
     students.forEach(function(s){ if (tierCounts[s.tier] != null) tierCounts[s.tier]++; });
-    var metrics=null,context=null;try{var state=SeatingData.reconcile(profiles,saved || null);context=SeatingEngine.prepare(state.students,seatMap.map(function(s){return s?.blocked?'🚫':s?.name || null;}),saved?.advancedSettings || {groupSize:6});metrics=SeatingEngine.evaluate(context,context.original);}catch(_){}
+    var metrics=null,context=null;try{var state=SeatingData.reconcile(profiles,saved || null);context=SeatingEngine.prepare(state.students,seatMap.map(function(s){return s?.blocked?'🚫':s?.name || null;}),Object.assign({groupSize:6},saved?.advancedSettings,{seatIds:saved?.seatIds}));metrics=SeatingEngine.evaluate(context,context.original);}catch(_){}
     var helpLinks = [];
     var subjectCounts = {};
     for (var i = 0; i < seatMap.length; i++) {
         if (i % 2 !== 0) continue;
         var a = seatMap[i], b = seatMap[i + 1];
-        if (!a || !b || a.blocked || b.blocked || !context?.allowed[context.original[i]*context.n+context.original[i+1]]) continue;
+        if (!a || !b || a.absent || b.absent || a.blocked || b.blocked || !context?.allowed[context.original[i]*context.n+context.original[i+1]]) continue;
         var subjects=SeatingData.complementDetails(a,b).map(function(d){return d.subject+':'+d.helper+'帮'+d.recipient;});
         if (subjects.length) {
             helpLinks.push({ a: a.name, b: b.name, subjects: subjects });
@@ -3164,6 +3164,7 @@ function renderSeatingReadableGrid(data) {
     var colors = {L1:'#dbeafe',L2:'#dce4ff',L3:'#d4ecff',L4:'#e0f2fe',L5:'#fef9c3',L6:'#ffedd5',L7:'#fee2e2',L8:'#fecaca'};
     var html = '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:10px;">';
     data.seatMap.forEach(function(s, idx) {
+        if(s?.absent){html+='<div aria-hidden="true"></div>';return;}
         if(s?.blocked){html+='<div style="min-height:58px;border:1px solid #cbd5e1;border-radius:8px;background:#e2e8f0;display:grid;place-items:center;">禁用</div>';return;}
         if (!s) { html += '<div style="min-height:58px;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;"></div>'; return; }
         html += '<div style="min-height:58px;border:1px solid #cbd5e1;border-radius:8px;background:' + (colors[s.tier] || '#fff') + ';padding:6px;text-align:center;font-size:11px;"><div style="font-weight:800;color:#0f172a;">' + escapeHtml(s.name) + '</div><div>' + escapeHtml(s.tier) + '</div><div style="color:#64748b;">' + (Number.isFinite(s.percentile) ? s.percentile.toFixed(1)+'% · '+s.sampleCount+'次' : '数据不足') + '</div></div>';

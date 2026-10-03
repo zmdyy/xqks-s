@@ -10414,7 +10414,7 @@ function generateSeatingReport(className) {
     var lines=['# 座位分析报告 — '+className,'','成绩口径：'+data.scopeLabel,'所选考试：'+data.examLabels.join(' / '),'','硬约束：同桌总分层差≤2；关系不和不可同桌；固定位置、禁用位置和待分配名单保持。','互补：单科层差≥1且位置差≥10个百分点，两人各至少一科帮助对方。','比较顺序：双向互补→本组高分覆盖→相邻补充→适中差距→科目均衡→急迫性。','适中差距：总分位置差>10且≤25个百分点。','','| 学生 | 总分平均位置% | 总分层次 | 有效考试次数 |','| --- | --- | --- | --- |'];
     data.students.forEach(function(s){lines.push('| '+s.name+' | '+(Number.isFinite(s.percentile)?s.percentile.toFixed(2):'缺失')+' | '+s.tier+' | '+s.sampleCount+' |');});
     lines.push('','## '+(data.actualPlacement?'当前排位':'位置示例'),'','| 排 | 列1 | 列2 | 列3 | 列4 | 列5 | 列6 | 列7 | 列8 |','| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
-    for(var r=0;r<data.rows;r++)lines.push('| '+(r+1)+' | '+Array.from({length:8},function(_,c){return data.seatMap[r*8+c]?.blocked?'禁用':data.seatMap[r*8+c]?.name || '空位';}).join(' | ')+' |');
+    for(var r=0;r<data.rows;r++)lines.push('| '+(r+1)+' | '+Array.from({length:8},function(_,c){return data.seatMap[r*8+c]?.absent?'—':data.seatMap[r*8+c]?.blocked?'禁用':data.seatMap[r*8+c]?.name || '空位';}).join(' | ')+' |');
     lines.push('','## 当前同桌帮助方向');data.helpLinks.forEach(function(l){lines.push('- '+l.a+' / '+l.b+'：'+l.subjects.join('；'));});
     if(data.metrics)lines.push('','双向互补 '+data.metrics.dual+' 对；本组高分覆盖 '+data.metrics.own+'/'+data.metrics.activeGroups+' 组；相邻补充 '+data.metrics.adjacent+' 组；适中互补 '+data.metrics.moderate+' 对；科目均衡 '+data.metrics.balance+'。');
     lines.push('','数据仅用于当前成绩规则，不宣称已达到所有目标的理论最优。');return lines.join('\n');

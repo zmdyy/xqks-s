@@ -40,6 +40,8 @@ function SeatingModule(rootEl) {
     this.uid = 'sm';
     this.students = [];
     this.seatMap = [];
+    this.seatIds = [];
+    this.addingSeats = false;
     this.showTags = true;
     this.currentEditingName = '';
     this.dragged = { source: null, name: null, index: -1 };
@@ -70,6 +72,7 @@ SeatingModule.prototype.init = function(profiles, options) {
     var state = SeatingData.reconcile(profiles, saved);
     this.students = state.students;
     this.seatMap = state.seatMap;
+    this.seatIds = state.seatIds;
     if (saved) {
         this.latestSnapshot=saved;
         this.advancedSettings = AppCore.clone(saved.advancedSettings || this.advancedSettings);
@@ -105,7 +108,7 @@ SeatingModule.prototype.isForbiddenPair = function(g1, g2) {
 };
 SeatingModule.prototype.assignInitialSeats = function() {
     var present=new Set(this.seatMap.filter(Boolean)),free=[];
-    this.seatMap.forEach(function(name,i){if(name===null)free.push(i);});
+    this.seatMap.forEach(function(name,i){if(name===null && this.seatIds[i]!==null)free.push(i);},this);
     this.students.filter(function(student){return !present.has(student.name);}).forEach(function(student,i){if(free[i]!==undefined)this.seatMap[free[i]]=student.name;},this);
     // The first arrangement uses the same hard rules and pair cache as later searches.
     var context=this.getAcademicContext();
@@ -149,8 +152,8 @@ SeatingModule.prototype.buildAcademicControls = function() {
         '<p id="sm-searchStatus" role="status" aria-live="polite" class="sm-academic-note"></p>';
 };
 SeatingModule.prototype.getAcademicContext = function() {
-    var key=JSON.stringify([this.students.map(function(s){return [s.id,s.name,s.compositeRank,s.subjects,s.tags];}),this.seatMap.length,this.advancedSettings.groupSize]);
-    if(!this.academicCache || this.academicCache.key!==key)this.academicCache={key:key,context:SeatingEngine.prepare(this.students,this.seatMap,this.advancedSettings)};
+    var key=JSON.stringify([this.students.map(function(s){return [s.id,s.name,s.compositeRank,s.subjects,s.tags];}),this.seatIds,this.advancedSettings.groupSize]);
+    if(!this.academicCache || this.academicCache.key!==key)this.academicCache={key:key,context:SeatingEngine.prepare(this.students,this.seatMap,Object.assign({},this.advancedSettings,{seatIds:this.seatIds}))};
     return SeatingEngine.rebase(this.academicCache.context,this.students,this.seatMap);
 };
 SeatingModule.prototype.academicSelectionChanged = function() {
@@ -217,6 +220,7 @@ SeatingModule.prototype.buildLayoutHTML = function() {
         '<div class="seating-content-wrapper">' +
             '<div class="seating-main" id="sm-main">' +
                 '<div class="stage">\u8BB2 \u53F0</div>' +
+                '<div class="sm-seat-tools"><button class="btn2 btn2-toggle" id="sm-btnAddSeats">新增位置</button><button class="btn2 btn2-toggle" data-sm-add-row="top" hidden>上方增加整排</button><button class="btn2 btn2-toggle" data-sm-add-row="bottom" hidden>下方增加整排</button><span id="sm-addSeatHint" hidden>点击＋新增；同一排的其他＋可补齐位置。</span></div>' +
                 '<div class="seat-grid" id="sm-seatGrid"></div>' +
             '</div>' +
             '<div class="seating-bottom">' +
@@ -329,6 +333,9 @@ SeatingModule.prototype.buildLayoutHTML = function() {
 };
 
 SeatingModule.prototype.bindEvents = function() {
+    var module=this;
+    this.root.querySelector('#sm-btnAddSeats').onclick=function(){module.addingSeats=!module.addingSeats;module.renderGrid();};
+    this.root.querySelectorAll('[data-sm-add-row]').forEach(function(button){button.onclick=function(){module.addSeat({side:button.dataset.smAddRow,whole:true});};});
     var self = this;
     ['#sm-currentExam','#sm-compareExam','#sm-academicScope'].forEach(function(id){self.root.querySelector(id).onchange=function(){self.academicSelectionChanged();};});
     // Refresh
@@ -429,6 +436,25 @@ SeatingModule.prototype.loadFromCurrentData = function() {
     return loadSeatingClass(document.getElementById('seatingClassFilter').value);
 };
 
+SeatingModule.prototype.addSeat = function(options) {
+    this.cancelOptimization();
+    try {
+        var added=SeatingData.addSeats(this.seatMap,this.seatIds,options);
+        this.seatMap=added.seatMap;this.seatIds=added.seatIds;
+        this.dragged={source:null,name:null,index:-1};
+        this.saveAndRender(options.index!=null?'补齐新增排的位置':(options.side==='top'?'上方':'下方')+(options.whole?'新增整排':'新增位置'));
+    }catch(error){showAlert(error.message);}
+};
+SeatingModule.prototype.appendSeatAddRow = function(grid,side) {
+    var self=this;
+    for(var col=0;col<8;col++) {
+        if(col===2||col===4||col===6){var gap=document.createElement('div');gap.className='sm-add-aisle';grid.appendChild(gap);}
+        var button=document.createElement('button');button.className='sm-add-seat sm-add-edge';button.textContent='＋';
+        button.dataset.smAddSide=side;button.dataset.smAddCol=col;button.setAttribute('aria-label',(side==='top'?'上方':'下方')+'第'+(col+1)+'列新增位置');
+        button.onclick=function(c){return function(){self.addSeat({side:side,col:c});};}(col);grid.appendChild(button);
+    }
+};
+
 // 渲染座位网格
 SeatingModule.prototype.renderGrid = function() {
     var grid = this.root.querySelector('#sm-seatGrid');
@@ -436,6 +462,9 @@ SeatingModule.prototype.renderGrid = function() {
     grid.className = 'seat-grid' + (this.showTags ? '' : ' tag-hidden');
     grid.innerHTML = '';
     var self = this;
+    var addButton=this.root.querySelector('#sm-btnAddSeats');if(addButton){addButton.textContent=this.addingSeats?'完成':'新增位置';addButton.setAttribute('aria-pressed',String(this.addingSeats));}
+    this.root.querySelectorAll('[data-sm-add-row],#sm-addSeatHint').forEach(function(el){el.hidden=!self.addingSeats;});
+    if(this.addingSeats)this.appendSeatAddRow(grid,'top');
     var rows = Math.ceil(this.seatMap.length / 8);
     for (var row = 0; row < rows; row++) {
         for (var col = 0; col < 8; col++) {
@@ -449,6 +478,12 @@ SeatingModule.prototype.renderGrid = function() {
             var name = this.seatMap[idx];
             let seat = document.createElement('div');
             seat.className = 'seat';
+            if(this.seatIds[idx]===null){
+                if(this.addingSeats){seat=document.createElement('button');seat.className='sm-add-seat';seat.textContent='＋';seat.dataset.smAddIndex=idx;seat.setAttribute('aria-label','第'+(row+1)+'行第'+(col+1)+'列新增位置');seat.onclick=function(i){return function(){self.addSeat({index:i});};}(idx);}
+                else {seat.className='sm-seat-spacer';seat.setAttribute('aria-hidden','true');}
+                grid.appendChild(seat);continue;
+            }
+            seat.dataset.seatId=this.seatIds[idx];seat.dataset.seatIndex=idx;
             if (name === '\u{1F6AB}') {
                 seat.classList.add('empty-seat');
                 seat.innerHTML = '<div style="color:#999;font-size:1.2rem">\u{1F6AB}</div><div style="color:#999;font-size:0.7rem">空位</div>';
@@ -491,7 +526,7 @@ SeatingModule.prototype.renderGrid = function() {
                     seat.onclick = function(n) { return function() { self.openModal(n); }; }(s.name);
                 }
             } else {
-                seat.innerHTML = '<span style="color:#ddd;font-size:12px">' + (idx + 1) + '</span>';
+                seat.innerHTML = '<span class="sm-empty-seat-label">空座</span>';
                 seat.ondragover = function(e) { e.preventDefault(); seat.classList.add('drag-over'); };
                 seat.ondragleave = function() { seat.classList.remove('drag-over'); };
                 seat.ondrop = function(i) { return function(e) {
@@ -503,6 +538,7 @@ SeatingModule.prototype.renderGrid = function() {
             grid.appendChild(seat);
         }
     }
+    if(this.addingSeats)this.appendSeatAddRow(grid,'bottom');
 };
 
 SeatingModule.prototype.getDeskPartner = function(index) {
@@ -515,7 +551,7 @@ SeatingModule.prototype.getDeskPartner = function(index) {
     return name && name !== '\u{1F6AB}' ? name : null;
 };
 SeatingModule.prototype.getFourPersonGroup = function(index) {
-    var group = SeatingData.groups(this.seatMap, this.advancedSettings.groupSize).find(function(indices) { return indices.indexOf(index) >= 0; }) || [];
+    var group = SeatingData.groups(this.seatMap, this.advancedSettings.groupSize,this.seatIds).find(function(indices) { return indices.indexOf(index) >= 0; }) || [];
     return group.filter(function(i) { return this.seatMap[i] && this.seatMap[i] !== '🚫'; }, this)
         .map(function(i) { return {name:this.seatMap[i],index:i}; }, this);
 };
@@ -538,17 +574,15 @@ SeatingModule.prototype.openModal = function(name) {
     var deskPartner = seatIdx >= 0 ? this.getDeskPartner(seatIdx) : null;
     var partnerG = deskPartner ? (this.students.find(function(x) { return x.name === deskPartner; })?.gradient || 0) : 0;
     var diff = g && partnerG ? Math.abs(g - partnerG) : null;
-    var subjectCount = Object.keys(s.subjects || {}).length;
     var groupMembers = seatIdx >= 0 ? this.getFourPersonGroup(seatIdx).filter(function(m) { return m.name !== s.name; }) : [];
     var groupHtml = groupMembers.map(function(m) { var mg = self.students.find(function(x) { return x.name === m.name; })?.gradient || 0; return '<span class="mini-tag">' + m.name + '(' + self.gradientText(mg) + ')</span>'; }).join(' ');
     var partner=this.getStudent(deskPartner),help=partner?SeatingData.complementDetails(s,partner):[],mutual=help.some(function(d){return d.helper===s.name;})&&help.some(function(d){return d.helper===deskPartner;});
-    var gradientHtml = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span class="gradient-badge" style="background:' + gColor + '">' + gLabel + '</span><span><strong>总分层次：</strong>' + gLabel + ' | 本次所选口径名次：' + (s.latestTotalRank || '?') + '/' + (s.totalPopulation || '?') + '</span></div>' +
+    var gradientHtml = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span class="gradient-badge" style="background:' + gColor + '">' + gLabel + '</span><span><strong>总分层次：</strong>' + gLabel + '</span></div>' +
         '<div style="margin-top:4px;"><strong>同桌：</strong>' + escapeHtml(deskPartner || '无') + (deskPartner ? ' | 总分层差：' + (diff ?? '未知') + ' | 双向互补：' + (mutual?'是':'否') + (diff>2 ? '<span style="color:red;margin-left:8px;">总分层差超限</span>' : '') : '') + '</div>' +
         '<div style="margin-top:4px;">'+help.map(function(d){return escapeHtml(d.subject+'：'+d.helper+'→'+d.recipient+'（层差'+d.layerGap+'，位置差'+d.positionGap.toFixed(1)+'点）');}).join('<br>')+'</div>'+
         '<div style="margin-top:4px;"><strong>学习小组：</strong>' + (groupHtml || '未就座') + '</div>' +
         (s.leadingSubjects ? '<div style="margin-top:4px;"><strong>领先科目：</strong><span class="mini-tag good">' + s.leadingSubjects + '</span></div>' : '') +
-        (s.weakSubjects ? '<div style="margin-top:4px;"><strong>薄弱科目：</strong><span class="mini-tag bad">' + s.weakSubjects + '</span></div>' : '') +
-        (subjectCount > 0 ? '<div style="margin-top:4px;font-size:0.7rem;color:#999;">已解析 ' + subjectCount + ' 科趋势数据</div>' : '');
+        (s.weakSubjects ? '<div style="margin-top:4px;"><strong>薄弱科目：</strong><span class="mini-tag bad">' + s.weakSubjects + '</span></div>' : '');
     var giEl = this.root.querySelector('#sm-gradientInfoContent');
     if (giEl) giEl.innerHTML = gradientHtml;
     this.root.querySelectorAll('.tag-item').forEach(function(el) { el.classList.remove('selected'); });
@@ -576,17 +610,8 @@ SeatingModule.prototype.updateStatus = function(stat) {
 };
 SeatingModule.prototype.updateAnalysis = function(s) {
     var section=this.root.querySelector('#sm-analysisSection');if(section)section.style.display='block';
-    var position=Number.isFinite(s.compositeRank)?s.compositeRank.toFixed(1)+'%（越小越靠前）':'数据不足';
-    var html='<div class="analysis-item"><strong>所选考试平均位置：</strong>'+position+'；有效考试 '+(s.sampleCount || 0)+'次</div>'+
-        '<div class="analysis-item"><strong>综合依据：</strong>'+escapeHtml(s.totalSource || '总分')+'；有效人数 '+(s.totalPopulation || 0)+'</div>'+
-        '<div class="analysis-item"><strong>本次所选口径名次：</strong>'+(s.latestTotalRank ?? '—')+'；总分层次 '+this.gradientText(s.gradient)+'</div>'+
-        '<div class="analysis-item"><strong>本次 / 对照：</strong>'+escapeHtml((s.examLabels || []).join(' / ') || '无')+'；名次 '+escapeHtml((s.totalTrend || []).join(' / ') || '无')+'</div>';
-    Object.entries(s.subjects || {}).forEach(function(pair) {
-        var sn=pair[0],sd=pair[1],pct=Number.isFinite(sd.percentile)?sd.percentile.toFixed(1)+'%':'数据不足';
-        html+='<div class="analysis-item"><strong>'+escapeHtml(sn)+':</strong> 本次得分 '+(sd.score ?? '—')+'；本次名次 '+(sd.rank ?? '—')+'/'+(sd.population || 0)+'；平均位置 '+pct+
-            '<br><span style="color:#666">'+escapeHtml(sd.source || '')+'；本次 / 对照名次 '+escapeHtml((sd.trend || []).join(' / ') || '无')+'</span></div>';
-    });
-    var el=this.root.querySelector('#sm-analysisContent');if(el)el.innerHTML=html;
+    var rows=[['总分',s.compositeRank]].concat(Object.entries(s.subjects || {}).map(function(entry){return [entry[0],entry[1].percentile];}));
+    this.root.querySelector('#sm-analysisContent').innerHTML='<p class="sm-position-note">平均位置越小，成绩越靠前。</p><table class="sm-position-table"><thead><tr><th>科目</th><th>平均位置</th></tr></thead><tbody>'+rows.map(function(row){return '<tr><td>'+escapeHtml(row[0])+'</td><td>'+(Number.isFinite(row[1])?row[1].toFixed(1)+'%':'—')+'</td></tr>';}).join('')+'</tbody></table>';
 };
 
 // Search runs off the UI thread; stale results never overwrite a later manual edit.
@@ -613,7 +638,7 @@ SeatingModule.prototype.runOptimization = async function(type) {
         }else result=await fallback();
         if(!result||this.searchJob!==job||seatingModuleInstance!==this||epoch!==seatingLoadEpoch||sourceEpoch!==dataEpoch||JSON.stringify(this.students)!==signature||!this.areSeatMapsEqual(original,this.seatMap))return;
         this.searchJob=null;
-        if(!result.valid||!result.solution||!SeatingData.validMap(result.solution,this.students,original)){showAlert(result.reason || '排座校验失败，原排位已保留');return;}
+        if(!result.valid||!result.solution||!SeatingData.validMap(result.solution,this.students,original,this.seatIds)){showAlert(result.reason || '排座校验失败，原排位已保留');return;}
         this.lastOptimization={metrics:result.metrics,evaluations:result.evaluations,rejected:result.rejected,elapsedMs:result.elapsedMs};
         this.seatMap=result.solution;await this.saveAndRender('智能排座：'+type);
         var message='搜索完成：双向互补 '+result.metrics.dual+' 对，本组高分覆盖 '+result.metrics.own+'/'+result.metrics.activeGroups+' 组，适中互补 '+result.metrics.moderate+' 对；有效评分 '+result.evaluations.toLocaleString()+' 次。';
@@ -625,7 +650,7 @@ SeatingModule.prototype.runOptimization = async function(type) {
 
 // Compatibility entry point for integrations; uses the same cached engine as the worker.
 SeatingModule.prototype.SeatingOptimizer = function(students,seatMap,advancedSettings,parent) {
-    this.students=students;this.initialMap=seatMap;this.parent=parent;this.advancedSettings=advancedSettings;this.context=SeatingEngine.prepare(students,seatMap,advancedSettings);
+    this.students=students;this.initialMap=seatMap;this.parent=parent;this.advancedSettings=advancedSettings;this.context=SeatingEngine.prepare(students,seatMap,Object.assign({},advancedSettings,{seatIds:parent?.seatIds}));
     this.weights=Object.assign({complement:1,behavior:1,group:1,constraints:1,balance:1},advancedSettings.weights);this.config={budgetMs:advancedSettings.searchBudgetMs || 5000};
 };
 SeatingModule.prototype.SeatingOptimizer.prototype.optimizeForTarget = function(type){this.mode=type;return this.optimize();};
@@ -639,16 +664,16 @@ SeatingModule.prototype.executeRotation = function() {
     var mode=this.root.querySelector('#sm-rotationMode').value, original=this.seatMap.slice(), rows=Math.ceil(original.length/8), path=[];
     if(mode==='swap') {
         for(var i=0;i<original.length;i+=2) {
-            if(this.getStudent(original[i])?.status==='fixed' || this.getStudent(original[i+1])?.status==='fixed' || original[i]==='🚫' || original[i+1]==='🚫')continue;
+            if(this.getStudent(original[i])?.status==='fixed' || this.getStudent(original[i+1])?.status==='fixed' || original[i]==='🚫' || original[i+1]==='🚫' || this.seatIds[i]===null || this.seatIds[i+1]===null)continue;
             this.seatMap[i]=original[i+1];this.seatMap[i+1]=original[i];
         }
     } else {
         if(mode==='shift'){for(var c=0;c<8;c++)for(var r=0;r<rows;r++)path.push(r*8+c);}
         else {for(var r=0;r<rows;r++)for(var c=0;c<8;c++)path.push(r*8+(r%2===0?c:7-c));}
         if(mode==='shift') {
-            for(var c=0;c<8;c++){var column=path.slice(c*rows,(c+1)*rows).filter(function(i){return original[i]!=='🚫' && this.getStudent(original[i])?.status!=='fixed';},this);column.forEach(function(i,k){this.seatMap[column[(k+1)%column.length]]=original[i];},this);}
+            for(var c=0;c<8;c++){var column=path.slice(c*rows,(c+1)*rows).filter(function(i){return original[i]!=='🚫' && this.seatIds[i]!==null && this.getStudent(original[i])?.status!=='fixed';},this);column.forEach(function(i,k){this.seatMap[column[(k+1)%column.length]]=original[i];},this);}
         } else {
-            path=path.filter(function(i){return original[i]!=='🚫' && this.getStudent(original[i])?.status!=='fixed';},this);
+            path=path.filter(function(i){return original[i]!=='🚫' && this.seatIds[i]!==null && this.getStudent(original[i])?.status!=='fixed';},this);
             path.forEach(function(i,k){this.seatMap[path[(k+(mode==='fullCycle'?2:1))%path.length]]=original[i];},this);
         }
     }
@@ -660,13 +685,13 @@ SeatingModule.prototype.captureState = function(reason) {
     return {id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now()+'_'+Math.random().toString(16).slice(2),
         createdAt:new Date().toISOString(),reason:reason || '手动调整',className:this.className,
         batchId:DataPool.currentBatchId || null,batchLabel:DataPool.getCurrentBatch()?.label || '未保存批次',
-        students:AppCore.clone(this.students),seatMap:this.seatMap.slice(),showTags:this.showTags,
+        students:AppCore.clone(this.students),seatMap:this.seatMap.slice(),seatIds:this.seatIds.slice(),layoutVersion:1,showTags:this.showTags,
         advancedSettings:AppCore.clone(this.advancedSettings)};
 };
 SeatingModule.prototype.saveSnapshot = function(reason) {
     this.cancelOptimization();
     var snapshot=this.captureState(reason || '手动保存');
-    var signature=JSON.stringify([snapshot.className,snapshot.batchId,snapshot.batchLabel,snapshot.students,snapshot.seatMap,snapshot.showTags,snapshot.advancedSettings]);
+    var signature=JSON.stringify([snapshot.className,snapshot.batchId,snapshot.batchLabel,snapshot.students,snapshot.seatMap,snapshot.seatIds,snapshot.showTags,snapshot.advancedSettings]);
     if(reason && signature===this.lastSavedSignature)return this.pendingSave || Promise.resolve(true);
     this.lastSavedSignature=signature;
     var entry={id:snapshot.id,createdAt:snapshot.createdAt,reason:snapshot.reason,batchLabel:snapshot.batchLabel,className:this.className};
@@ -702,7 +727,7 @@ SeatingModule.prototype.loadSnapshot = async function(index) {
         await this.saveSnapshot('恢复前保留');
         if(seatingModuleInstance!==this || epoch!==seatingLoadEpoch)return;
         var profiles=buildSeatingProfiles(className);
-        if(!profiles.length){var academic=AppCore.clone(this.advancedSettings.academic);this.students=AppCore.clone(snap.students);this.seatMap=snap.seatMap.slice();this.advancedSettings=AppCore.clone(snap.advancedSettings || this.advancedSettings);this.advancedSettings.academic=academic;this.normalizeSettings();this.showTags=snap.showTags!==false;this.render();this.initModalPools();}
+        if(!profiles.length){var academic=AppCore.clone(this.advancedSettings.academic);this.students=AppCore.clone(snap.students);this.seatMap=snap.seatMap.slice();this.seatIds=SeatingData.layoutIds(this.seatMap,snap.seatIds);this.advancedSettings=AppCore.clone(snap.advancedSettings || this.advancedSettings);this.advancedSettings.academic=academic;this.normalizeSettings();this.showTags=snap.showTags!==false;this.render();this.initModalPools();}
         else {snap=AppCore.clone(snap);snap.advancedSettings=snap.advancedSettings || {};snap.advancedSettings.academic=AppCore.clone(this.advancedSettings.academic);this.init(profiles,{className:className,saved:snap});}
         await this.saveSnapshot('恢复快照');
     } catch(error){this.setSaveStatus('恢复失败：'+error.message,true);}
@@ -731,18 +756,18 @@ SeatingModule.prototype.exportData = function() {
         var rowData = ['第' + (r + 1) + '行'];
         for (var c = 0; c < 8; c++) {
             var idx = r * 8 + c;
-            rowData.push(this.seatMap[idx] || '');
+            rowData.push(this.seatIds[idx]===null?'—':this.seatMap[idx] || '空座');
             if (c === 1 || c === 3 || c === 5) rowData.push('---');
         }
         seatingData.push(rowData);
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(seatingData), '座位安排');
-    var studentHeader = ['姓名','状态','座位位置','层次','本次所选口径名次','所选考试平均位置%','优势科目','薄弱科目','标签','成绩口径','总分有效考试次数'];
+    var studentHeader = ['姓名','状态','座位位置','层次','本次所选口径名次','所选考试平均位置%','优势科目','薄弱科目','标签','成绩口径','总分有效考试次数','座位编号'];
     var studentData = [studentHeader];
     this.students.forEach(function(student) {
         var pos = this.seatMap.indexOf(student.name);
         var seatPos = pos !== -1 ? (Math.floor(pos / 8) + 1) + '行' + ((pos % 8) + 1) + '列' : '未分配';
-        studentData.push([student.name || '', student.status || '', seatPos, this.gradientText(student.gradient), student.latestTotalRank || '?', Number.isFinite(student.compositeRank) ? student.compositeRank.toFixed(1) + '%' : '数据不足', student.leadingSubjects || '', student.weakSubjects || '', (student.tags || []).join(', '),student.totalSource || '',student.sampleCount || 0]);
+        studentData.push([student.name || '', student.status || '', seatPos, this.gradientText(student.gradient), student.latestTotalRank || '?', Number.isFinite(student.compositeRank) ? student.compositeRank.toFixed(1) + '%' : '数据不足', student.leadingSubjects || '', student.weakSubjects || '', (student.tags || []).join(', '),student.totalSource || '',student.sampleCount || 0,pos>=0?this.seatIds[pos]:'']);
     }, this);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(studentData), '学生详细信息');
     var complementData = [['学生A','学生B','座位关系','距离','总分层差','是否符合总分层差','帮助科目（单科层差≥1且位置差≥10点）','同桌是否禁止','是否双向互补','总分位置差/百分点','差距是否适中']];
@@ -892,7 +917,7 @@ SeatingModule.prototype.importRecoveryData = function() {
             if(seatingModuleInstance!==self)return;
             if(!Array.isArray(data.students)||!Array.isArray(data.seatMap))throw new Error('缺少学生和座位数组');
             if(data.className && AppCore.classKey(data.className)!==AppCore.classKey(self.className))throw new Error('复原文件属于其他班级');
-            if(!SeatingData.validMap(data.seatMap,data.students,data.seatMap))throw new Error('复原文件包含重复或未知学生');
+            if(!SeatingData.validMap(data.seatMap,data.students,data.seatMap,data.seatIds))throw new Error('复原文件包含重复或未知学生');
             var profiles=buildSeatingProfiles(self.className,data.advancedSettings?.academic || self.advancedSettings.academic);
             if(data.students.some(function(s){return s.className && AppCore.classKey(s.className)!==AppCore.classKey(self.className);}))throw new Error('复原文件包含其他班级学生');
             if(!data.className && profiles.length && data.students.some(function(s){return !profiles.some(function(p){return p.name===s.name;});}))throw new Error('旧复原文件的学生无法匹配当前班级');
@@ -900,7 +925,7 @@ SeatingModule.prototype.importRecoveryData = function() {
             await self.saveSnapshot('导入前保留');
             if(seatingModuleInstance!==self)return;
             if(profiles.length)self.init(profiles,{className:self.className,saved:data});
-            else {self.students=AppCore.clone(data.students);self.seatMap=data.seatMap.slice();self.advancedSettings=AppCore.clone(data.advancedSettings || self.advancedSettings);self.normalizeSettings();self.showTags=data.showTags!==false;self.render();self.initModalPools();}
+            else {self.students=AppCore.clone(data.students);self.seatMap=data.seatMap.slice();self.seatIds=SeatingData.layoutIds(self.seatMap,data.seatIds);self.advancedSettings=AppCore.clone(data.advancedSettings || self.advancedSettings);self.normalizeSettings();self.showTags=data.showTags!==false;self.render();self.initModalPools();}
             await self.saveSnapshot('导入复原JSON');
         }catch(error){self.setSaveStatus('导入失败：'+error.message,true);}
     };input.click();
@@ -918,7 +943,7 @@ SeatingModule.prototype.getSeatRelation = function(c1, c2) {
 };
 SeatingModule.prototype.calculateSeatingStats = function() {
     var context=this.getAcademicContext(),metrics=SeatingEngine.evaluate(context,context.original);
-    var totalSeats = this.seatMap.length || 64;
+    var totalSeats = this.seatIds.filter(function(id){return id!==null;}).length;
     var occupiedSeats = this.seatMap.filter(function(s) { return s && s !== '\u{1F6AB}'; }).length;
     var emptySeats = totalSeats - occupiedSeats;
     var fixedStudents = this.students.filter(function(s) { return s.status === 'fixed'; }).length;
@@ -975,7 +1000,7 @@ SeatingModule.prototype.closeModal = function() {
 };
 SeatingModule.prototype.moveStudent = function(name,index) {
     var student=this.getStudent(name),target=this.getStudent(this.seatMap[index]),from=this.seatMap.indexOf(name);
-    if(!student || student.status==='fixed' || target?.status==='fixed' || this.seatMap[index]==='🚫' || index<0 || index>=this.seatMap.length)return;
+    if(!student || student.status==='fixed' || target?.status==='fixed' || this.seatMap[index]==='🚫' || this.seatIds[index]===null || index<0 || index>=this.seatMap.length)return;
     if(from===index)return;
     if(from>=0)this.seatMap[from]=this.seatMap[index];
     this.seatMap[index]=name;this.saveAndRender('手动调整座位');
@@ -1166,7 +1191,7 @@ async function loadSeatingClass(className, epoch) {
         module.restoreSnapshots(record?.history || []);
         module.latestSnapshot=record?.latest;
         if(profiles.length)module.init(profiles,{className:className,saved:record?.latest});
-        else {module.students=AppCore.clone(record.latest.students);module.seatMap=record.latest.seatMap.slice();module.advancedSettings=AppCore.clone(record.latest.advancedSettings || module.advancedSettings);module.normalizeSettings();module.showTags=record.latest.showTags!==false;module.render();module.renderHistory();module.initModalPools();}
+        else {module.students=AppCore.clone(record.latest.students);module.seatMap=record.latest.seatMap.slice();module.seatIds=SeatingData.layoutIds(module.seatMap,record.latest.seatIds);module.advancedSettings=AppCore.clone(record.latest.advancedSettings || module.advancedSettings);module.normalizeSettings();module.showTags=record.latest.showTags!==false;module.render();module.renderHistory();module.initModalPools();}
         if(!record) {
             var legacy=await restoreSeatingSnapshots();
             if(epoch!==seatingLoadEpoch || sourceEpoch!==dataEpoch)return;

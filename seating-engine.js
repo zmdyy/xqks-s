@@ -9,6 +9,7 @@
     function prepare(students,seatMap,settings) {
         settings=settings || {};const n=students.length,names=students.map(s=>s.name),index=new Map(names.map((name,i)=>[name,i]));
         if(index.size!==n)throw new Error('同班姓名重复，请先区分学生姓名');
+        if(!data.validSeatLayout(seatMap,settings.seatIds))throw new Error('座位布局无效');
         const original=seatMap.map(name=>name===blocked?-2:name==null?-1:index.has(name)?index.get(name):-3);
         if(original.includes(-3)||new Set(original.filter(i=>i>=0)).size!==original.filter(i=>i>=0).length)throw new Error('当前排位有重复或未知学生，请先修复');
         const allowed=new Uint8Array(n*n),mutual=new Uint8Array(n*n),moderate=new Uint8Array(n*n),balance=new Uint8Array(n*n),urgency=new Uint16Array(n*n),single=new Uint8Array(n*n),behavior=new Int16Array(n*n);
@@ -24,11 +25,11 @@
             if((a.tags || []).includes('性格开朗')!==(b.tags || []).includes('性格开朗'))soft+=10;
             for(const k of [i*n+j,j*n+i]){allowed[k]=+pair.allowed;mutual[k]=+pair.mutual;moderate[k]=+pair.moderate;balance[k]=pair.balance;urgency[k]=pair.urgency;single[k]=pair.single;behavior[k]=soft;}
         }
-        const groups=data.groups(seatMap,settings.groupSize || 6),seatGroups=new Int16Array(seatMap.length),neighbors=groups.map(()=>[]);
+        const groups=data.groups(seatMap,settings.groupSize || 6,settings.seatIds),seatGroups=new Int16Array(seatMap.length),neighbors=groups.map(()=>[]);
         groups.forEach((g,gi)=>g.forEach(s=>{if(s<seatMap.length)seatGroups[s]=gi;}));
         groups.forEach((g,gi)=>groups.forEach((h,hj)=>{if(gi!==hj&&g.some(a=>h.some(b=>Math.abs(Math.floor(a/8)-Math.floor(b/8))+Math.abs(a%8-b%8)===1)))neighbors[gi].push(hj);}));
         const fixed=original.map(i=>i>=0&&students[i].status==='fixed'),movable=original.map((s,i)=>s>=0&&!fixed[i]?i:-1).filter(i=>i>=0);
-        return {n,names,original,allowed,mutual,moderate,balance,urgency,single,behavior,anchors,groups,seatGroups,neighbors,fixed,movable,pairs,details,studentTags:students.map(s=>s.tags || []),groupSize:settings.groupSize || 6};
+        return {n,names,original,allowed,mutual,moderate,balance,urgency,single,behavior,anchors,groups,seatGroups,neighbors,fixed,movable,pairs,details,seatIds:settings.seatIds,studentTags:students.map(s=>s.tags || []),groupSize:settings.groupSize || 6};
     }
     function evaluate(c,map) {
         const m={dual:0,own:0,adjacent:0,moderate:0,balance:0,urgency:0,single:0,behavior:0,desks:0,violations:0,activeGroups:0},coverage=new Uint8Array(c.groups.length),active=new Uint8Array(c.groups.length);
@@ -46,6 +47,7 @@
         return m;
     }
     function rebase(c,students,map) {
+        if(!data.validSeatLayout(map,c.seatIds))throw new Error('座位布局无效');
         const index=new Map(c.names.map((name,i)=>[name,i])),original=map.map(name=>name===blocked?-2:name==null?-1:index.get(name) ?? -3);
         if(original.includes(-3)||new Set(original.filter(i=>i>=0)).size!==original.filter(i=>i>=0).length)throw new Error('当前排位有重复或未知学生');
         const fixed=original.map(i=>i>=0&&students[i].status==='fixed'),movable=original.map((s,i)=>s>=0&&!fixed[i]?i:-1).filter(i=>i>=0);
@@ -56,6 +58,7 @@
         const seen=new Uint8Array(c.n);
         for(let i=0;i<map.length;i++) {
             const value=map[i],old=c.original[i];
+            if(c.seatIds?.[i]===null && value!==-1)return false;
             if(!Number.isInteger(value)||value< -2)return false;
             if(old<0 && value!==old || old>=0 && value<0 || c.fixed[i]&&value!==old || value>=c.n)return false;
             if(value>=0){if(seen[value])return false;seen[value]=1;}
