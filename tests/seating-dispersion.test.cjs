@@ -1,0 +1,42 @@
+'use strict';
+const assert=require('node:assert/strict'),E=require('../seating-engine');
+const roster=n=>Array.from({length:n},(_,i)=>({name:'S'+i,compositeRank:20+i,status:'normal',tags:[],subjects:{数学:{percentile:50},物理:{percentile:50}}}));
+const students=roster(12),map=['S0','S1','S2','S3','S4','S5','S9','S10','S6','S7','S8','S11',null,null,null,null];
+const c=E.prepare(students,map,{groupSize:2}),m=E.evaluate(c,c.original);
+assert.equal(m.highCrowding,1);assert.equal(m.lowCrowding,1);assert.equal(m.crowding,2);assert.equal(m.mixed,2);
+assert.equal(c.pairs.find(p=>p.i===4&&p.j===5).mixed,false,'middle + middle is neutral');
+assert.equal(c.pairs.find(p=>p.i===0&&p.j===1).mixed,false,'high + high must not get a mixing reward');
+const helped=structuredClone(students);
+helped[0].subjects={数学:{percentile:10},物理:{percentile:30}};helped[1].subjects={数学:{percentile:30},物理:{percentile:10}};
+helped[9].subjects={数学:{percentile:10}};helped[10].subjects={数学:{percentile:30}};
+const hc=E.prepare(helped,map,{groupSize:2}),hm=E.evaluate(hc,hc.original);
+assert.equal(hm.dual,1);assert.equal(hm.oneWay,1);assert.equal(hm.crowding,0,'both mutual and one-way help exempt same-band desks');
+assert.equal(E.compare({dual:1,crowding:20},{dual:0,oneWay:50,mixed:50,own:50},'academic'),1);
+assert.equal(E.compare({dual:0,oneWay:1,crowding:20},{dual:0,oneWay:0,crowding:0,mixed:50,own:50},'academic'),1);
+assert.equal(E.compare({crowding:0},{crowding:1,mixed:50,own:50,horizontalStrength:50},'academic'),1);
+assert.equal(E.compare({own:2},{own:1,horizontalStrength:50,verticalStrength:50},'academic'),1);
+assert.equal(E.compare({horizontalStrength:2},{horizontalStrength:1,verticalStrength:50},'academic'),1);
+const equal=E.prepare(students.map(s=>({...s,compositeRank:25})),map,{});
+assert.equal(equal.anchors.reduce((a,b)=>a+b),0);assert.equal(equal.lows.reduce((a,b)=>a+b),0,'overlapping cutoff ties stay middle');
+const missing=structuredClone(students);missing[11].compositeRank=null;
+const mc=E.prepare(missing,map,{});assert.equal(mc.lows[11],0);assert.equal(mc.anchors[11],0);
+const tied=roster(12);tied[0].compositeRank=tied[1].compositeRank=tied[2].compositeRank=tied[3].compositeRank=20;
+assert.equal(E.prepare(tied,map,{}).anchors.reduce((a,b)=>a+b),4,'cutoff ties remain together');
+const twenty=roster(20);
+function layout(length,positions){
+ const result=Array(length).fill(null),placed=new Set(Object.keys(positions).map(Number));
+ Object.entries(positions).forEach(([student,seat])=>result[seat]='S'+student);
+ twenty.filter((_,i)=>i>=4&&!placed.has(i)).forEach(s=>result[result.indexOf(null)]=s.name);
+ return result;
+}
+function score(length,positions,groupSize=2,people=twenty){const ctx=E.prepare(people,layout(length,positions),{groupSize});return E.evaluate(ctx,ctx.original);}
+const path=score(24,{0:1,1:2,2:5,3:6});assert.equal(path.horizontal,2);assert.equal(path.horizontalClose,2);assert.equal(path.horizontalStrength,4);
+const star=score(24,{0:1,1:2,2:9});assert.equal(star.horizontal,1);assert.equal(star.vertical,0,'a group cannot be reused by vertical reinforcement');
+const vertical=score(24,{0:0,1:8,2:16});assert.equal(vertical.vertical,1);assert.equal(vertical.verticalClose,1);assert.equal(vertical.verticalStrength,2);
+const far=score(24,{0:0,1:18},6),near=score(24,{0:1,1:2},6);
+assert.equal(far.horizontal,1);assert.equal(far.horizontalClose,0);assert.equal(far.horizontalStrength,1);
+assert.equal(near.horizontal,1);assert.equal(near.horizontalClose,1);assert.equal(near.horizontalStrength,2);
+const conflict=structuredClone(twenty);conflict[0].tags=['关系不和:S1'];
+const blocked=score(24,{0:1,1:2},2,conflict);assert.equal(blocked.horizontal,0,'conflicting neighbors do not reinforce each other');
+const safe=E.search(hc,{seed:7,budgetMs:1000,maxEvaluations:5000});assert.equal(safe.valid,true);assert.ok(safe.metrics.crowding<=hm.crowding);
+console.log('PASS seating dispersion: help exemptions, high/low cutoffs and ties, mixing, strict priorities, horizontal/vertical proximity, non-repeating optimal reinforcement and conflict exclusion');

@@ -34,10 +34,10 @@ const pupil=(i,p)=>({name:'S'+i,compositeRank:p,status:'normal',tags:[],subjects
 const students=Array.from({length:8},(_,i)=>pupil(i,10+i*5)),map=students.map(s=>s.name),context=engine.prepare(students,map,{groupSize:4});
 assert.equal(context.pairs.length,28);assert.equal(context.pairs.find(p=>p.i===0&&p.j===2).moderate,false);assert.equal(context.pairs.find(p=>p.i===0&&p.j===5).moderate,true);
 assert.equal(context.pairs.find(p=>p.i===0&&p.j===6).allowed,false);
-const metrics={dual:1,own:1,adjacent:0,moderate:1,balance:1,urgency:1,single:0,behavior:0};
-for(const key of ['dual','own','adjacent','moderate','balance','urgency','single','behavior']){
- const better={...metrics,[key]:metrics[key]+1},worse={...metrics};let after=false;
- for(const next of Object.keys(metrics)){if(after)worse[next]=1000000;if(next===key)after=true;}
+const metrics={dual:1,oneWay:1,crowding:1,mixed:1,own:1,horizontalStrength:1,verticalStrength:1,adjacent:0,moderate:1,balance:1,urgency:1,single:0,behavior:0};
+for(const key of Object.keys(metrics)){
+ const better={...metrics,[key]:metrics[key]+(key==='crowding'?-1:1)},worse={...metrics};let after=false;
+ for(const next of Object.keys(metrics)){if(after)worse[next]=next==='crowding'?0:1000000;if(next===key)after=true;}
  assert.equal(engine.compare(better,worse,'academic'),1,'a later reward must not outweigh '+key);
 }
 let optimal=null,permutations=0;

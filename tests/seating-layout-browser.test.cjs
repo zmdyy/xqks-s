@@ -57,8 +57,15 @@ const root=path.resolve(__dirname,'..');
   assert.equal(await page.evaluate(()=>{const m=seatingModuleInstance,c=m.getAcademicContext();return SeatingEngine.valid(c,c.original)}),true);
   assert.equal(await page.evaluate(({name,id})=>{const m=seatingModuleInstance;return m.seatIds[m.seatMap.indexOf(name)]===id;},{name:fixedName,id:fixedId}),true);
   assert.equal(await page.evaluate(()=>{const m=seatingModuleInstance,r=buildSeatingReadableData('01班');return r.seatMap.filter(s=>s?.absent).length===13&&r.metrics.dual===m.lastOptimization.metrics.dual}),true);
+  assert.equal(await page.evaluate(()=>{
+   const m=seatingModuleInstance,r=buildSeatingReadableData('01班'),stats=m.calculateSeatingStats(),pairs=[['单向帮助同桌','oneWay'],['无互补高高同桌','highCrowding'],['无互补低低同桌','lowCrowding'],['无互补混搭同桌','mixed'],['左右高分强化','horizontal'],['上下高分强化','vertical']];
+   const write=XLSX.writeFile;let wb;XLSX.writeFile=value=>wb=value;try{m.exportData();}finally{XLSX.writeFile=write;}
+   const rows=XLSX.utils.sheet_to_json(wb.Sheets['统计汇总'],{header:1});
+   return pairs.every(([label,key])=>stats[label].value===r.metrics[key]&&r.metrics[key]===m.lastOptimization.metrics[key]&&rows.find(row=>row[0]===label)[1]===r.metrics[key]);
+  }),true,'engine, report, page and Excel use identical dispersion/reinforcement metrics');
   assert.match(await page.evaluate(()=>generateSeatingReport('01班')),/—/);
-  await page.evaluate(()=>renderSeatingReadableReport('01班'));assert.ok(await page.locator('#comprehensiveReadableReportContent').textContent());
+  await page.evaluate(()=>renderSeatingReadableReport('01班'));assert.match(await page.locator('#comprehensiveReadableReportContent').textContent(),/左右高分强化/);
+  assert.match(await page.evaluate(()=>generateSeatingReport('01班')),/无互补高＋高/);
   // Return to the seating tab after rendering the report view.
   await page.click('[data-tab="tab-seating"]');
   const [download]=await Promise.all([page.waitForEvent('download'),page.click('#sm-btnRecoveryExport')]);const backup=JSON.parse(fs.readFileSync(await download.path(),'utf8'));assert.equal(backup.seatIds.filter(Boolean).length,27);

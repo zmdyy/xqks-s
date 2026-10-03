@@ -1651,7 +1651,7 @@ const SEATING_OPTIMIZATION_PROMPT = [
     '- 优先解释推荐座位策略的适用场景，而不是只输出座位表。',
     '- 成绩依据用户所选考试：总分和单科分别按有效年级名次/有效人数计算位置，两次有效记录等权平均；班内预实验不能描述成年级结果。',
     '- L1–L8每层12.5个百分点。同桌总分层差不得超过2；单科帮助需层差至少1且位置差至少10个百分点，急迫性按1/2/3封顶。',
-    '- 按双向互补、本组高分覆盖、相邻补充、适中互补、科目均衡、急迫性、单向补充的顺序解释结果，不把次要目标抵消主要目标。',
+    '- 按双向互补、单向帮助、减少无互补同类同桌、无互补混搭、本组高分覆盖、左右强化、上下强化、相邻补充、适中互补、科目均衡、急迫性的顺序解释结果，不把次要目标抵消主要目标。',
     '- 总分位置差>10且≤25个百分点为适中；班内总分平均位置前20%（含临界同分）为辐射学生；相邻限上下左右。',
     '- 固定位置、禁用位置和待分配名单须保留，关系不和不得同桌；爱说话搭档是行为偏好。缺失成绩不补0。',
     '- 每条帮扶建议必须写明帮扶双方姓名、帮扶科目、安排理由和跟踪方式。',
@@ -10411,12 +10411,12 @@ var SUBJ_AI_PROMPT = [
 
 function generateSeatingReport(className) {
     var data=buildSeatingReadableData(className);if(!data)return '# 该班暂无可分析成绩';
-    var lines=['# 座位分析报告 — '+className,'','成绩口径：'+data.scopeLabel,'所选考试：'+data.examLabels.join(' / '),'','硬约束：同桌总分层差≤2；关系不和不可同桌；固定位置、禁用位置和待分配名单保持。','互补：单科层差≥1且位置差≥10个百分点，两人各至少一科帮助对方。','比较顺序：双向互补→本组高分覆盖→相邻补充→适中差距→科目均衡→急迫性。','适中差距：总分位置差>10且≤25个百分点。','','| 学生 | 总分平均位置% | 总分层次 | 有效考试次数 |','| --- | --- | --- | --- |'];
+    var lines=['# 座位分析报告 — '+className,'','成绩口径：'+data.scopeLabel,'所选考试：'+data.examLabels.join(' / '),'','硬约束：同桌总分层差≤2；关系不和不可同桌；固定位置、禁用位置和待分配名单保持。','互补：单科层差≥1且位置差≥10个百分点，两人各至少一科帮助对方。','比较顺序：双向互补→单向帮助→减少无互补同类同桌→无互补混搭→本组高分覆盖→左右强化→上下强化→相邻补充→适中差距→科目均衡→急迫性。无学科帮助时才减少高＋高、低＋低。高低分为班内总分前后20%，同分不拆，重叠同分段归中间；缺失总分不归低分。左右邻组优先，同排靠近奖励更高，每组最多计一次强化。','适中差距：总分位置差>10且≤25个百分点。','','| 学生 | 总分平均位置% | 总分层次 | 有效考试次数 |','| --- | --- | --- | --- |'];
     data.students.forEach(function(s){lines.push('| '+s.name+' | '+(Number.isFinite(s.percentile)?s.percentile.toFixed(2):'缺失')+' | '+s.tier+' | '+s.sampleCount+' |');});
     lines.push('','## '+(data.actualPlacement?'当前排位':'位置示例'),'','| 排 | 列1 | 列2 | 列3 | 列4 | 列5 | 列6 | 列7 | 列8 |','| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
     for(var r=0;r<data.rows;r++)lines.push('| '+(r+1)+' | '+Array.from({length:8},function(_,c){return data.seatMap[r*8+c]?.absent?'—':data.seatMap[r*8+c]?.blocked?'禁用':data.seatMap[r*8+c]?.name || '空位';}).join(' | ')+' |');
     lines.push('','## 当前同桌帮助方向');data.helpLinks.forEach(function(l){lines.push('- '+l.a+' / '+l.b+'：'+l.subjects.join('；'));});
-    if(data.metrics)lines.push('','双向互补 '+data.metrics.dual+' 对；本组高分覆盖 '+data.metrics.own+'/'+data.metrics.activeGroups+' 组；相邻补充 '+data.metrics.adjacent+' 组；适中互补 '+data.metrics.moderate+' 对；科目均衡 '+data.metrics.balance+'。');
+    if(data.metrics)lines.push('','双向互补 '+data.metrics.dual+' 对；单向帮助 '+data.metrics.oneWay+' 对；无互补高＋高 '+data.metrics.highCrowding+' 对、低＋低 '+data.metrics.lowCrowding+' 对、混搭 '+data.metrics.mixed+' 对；左右高分强化 '+data.metrics.horizontal+' 对（近邻 '+data.metrics.horizontalClose+' 对），上下强化 '+data.metrics.vertical+' 对（近邻 '+data.metrics.verticalClose+' 对）；本组高分覆盖 '+data.metrics.own+'/'+data.metrics.activeGroups+' 组；相邻补充 '+data.metrics.adjacent+' 组；适中互补 '+data.metrics.moderate+' 对；科目均衡 '+data.metrics.balance+'。');
     lines.push('','数据仅用于当前成绩规则，不宣称已达到所有目标的理论最优。');return lines.join('\n');
 }
 

@@ -3137,6 +3137,7 @@ function renderSeatingReadableReport(className) {
     html.push('<div class="comp-readable-report">');
     html.push('<div class="cr-cover"><div><h2>座位优化图文报告</h2><p>' + (data.actualPlacement ? '采用已保存的实际排位。' : '尚无已保存排位，以下为所选考试平均位置蛇形分布示例。') + '学科帮助按单科层差≥1且位置差≥10个百分点识别；总分层差≤2，缺失成绩不计。</p></div>');
     html.push('<div class="cr-meta"><div><b>成绩口径：</b>'+escapeHtml(data.scopeLabel)+'</div><div><b>考试：</b>'+escapeHtml(data.examLabels.join(' / '))+'</div><div><b>班级：</b>' + escapeHtml(className) + '</div><div><b>人数：</b>' + data.students.length + '</div><div><b>座位：</b>' + data.rows + '行 × 8列</div><div><b>帮扶关系：</b>' + data.helpLinks.length + '组</div></div></div>');
+    if(data.metrics){var m=data.metrics;html.push('<p>双向互补 '+m.dual+' 对；单向帮助 '+m.oneWay+' 对；无互补高＋高 '+m.highCrowding+' 对、低＋低 '+m.lowCrowding+' 对、混搭 '+m.mixed+' 对；本组高分覆盖 '+m.own+'/'+m.activeGroups+' 组；左右高分强化 '+m.horizontal+' 对（近邻 '+m.horizontalClose+' 对），上下强化 '+m.vertical+' 对（近邻 '+m.verticalClose+' 对）。每组最多参与一次强化；学科帮助优先于无互补混搭，本组覆盖优先于邻组强化。</p>');}
     html.push('<div class="sr-kpis">');
     Object.keys(data.tierCounts).forEach(function(t){ html.push('<div class="sr-kpi"><div class="sr-kpi-label">' + t + '</div><div class="sr-kpi-value">' + data.tierCounts[t] + '</div></div>'); });
     html.push('</div>');

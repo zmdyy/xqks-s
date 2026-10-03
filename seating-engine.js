@@ -6,6 +6,9 @@
     'use strict';
     const now=()=>typeof performance!=='undefined'?performance.now():Date.now();
     const blocked='🚫';
+    const reinforcementCaches=new WeakMap();
+    const academicOrder=['dual','oneWay','crowding','mixed','own','horizontalStrength','verticalStrength','adjacent','moderate','balance','urgency','single','behavior'];
+    const behaviorOrder=['behavior',...academicOrder.filter(k=>k!=='behavior')],socialOrder=['own',...academicOrder.filter(k=>k!=='own')];
     function prepare(students,seatMap,settings) {
         settings=settings || {};const n=students.length,names=students.map(s=>s.name),index=new Map(names.map((name,i)=>[name,i]));
         if(index.size!==n)throw new Error('同班姓名重复，请先区分学生姓名');
@@ -13,26 +16,54 @@
         const original=seatMap.map(name=>name===blocked?-2:name==null?-1:index.has(name)?index.get(name):-3);
         if(original.includes(-3)||new Set(original.filter(i=>i>=0)).size!==original.filter(i=>i>=0).length)throw new Error('当前排位有重复或未知学生，请先修复');
         const allowed=new Uint8Array(n*n),mutual=new Uint8Array(n*n),moderate=new Uint8Array(n*n),balance=new Uint8Array(n*n),urgency=new Uint16Array(n*n),single=new Uint8Array(n*n),behavior=new Int16Array(n*n);
-        const pairs=[],details=[],anchors=new Uint8Array(n),validTotals=students.map((s,i)=>({i,p:s.compositeRank})).filter(x=>Number.isFinite(x.p)).sort((a,b)=>a.p-b.p);
-        if(validTotals.length){const cut=validTotals[Math.ceil(validTotals.length*.2)-1].p;validTotals.filter(x=>x.p<=cut).forEach(x=>anchors[x.i]=1);}
+        const pairs=[],details=[],anchors=new Uint8Array(n),lows=new Uint8Array(n),crowding=new Uint8Array(n*n),mixed=new Uint8Array(n*n),conflicts=new Uint8Array(n*n),validTotals=students.map((s,i)=>({i,p:s.compositeRank})).filter(x=>Number.isFinite(x.p)).sort((a,b)=>a.p-b.p);
+        if(validTotals.length){
+            const count=Math.ceil(validTotals.length*.2),highCut=validTotals[count-1].p,lowCut=validTotals[validTotals.length-count].p;
+            validTotals.forEach(x=>{anchors[x.i]=+(highCut<lowCut?x.p<=highCut:x.p<highCut);lows[x.i]=+(highCut<lowCut?x.p>=lowCut:x.p>lowCut);});
+        }
         for(let i=0;i<n;i++)for(let j=i+1;j<n;j++) {
             const a=students[i],b=students[j],help=data.complementDetails(a,b),f=help.filter(d=>d.helper===a.name),r=help.filter(d=>d.helper===b.name),g1=data.layer(a.compositeRank),g2=data.layer(b.compositeRank),gap=Math.abs(a.compositeRank-b.compositeRank);
             const conflict=(a.tags || []).includes('关系不和:'+b.name)||(b.tags || []).includes('关系不和:'+a.name);
             const pair={i,j,allowed:!!(g1&&g2&&Math.abs(g1-g2)<=2&&!conflict),mutual:!!(f.length&&r.length),moderate:Number.isFinite(gap)&&gap>10+1e-8&&gap<=25+1e-8,balance:Math.min(f.length,r.length),urgency:Math.min(f.reduce((sum,d)=>sum+d.urgency,0),r.reduce((sum,d)=>sum+d.urgency,0)),single:f.length&&r.length?0:Math.max(f.length,r.length),totalGap:Number.isFinite(gap)?gap:null,layerGap:g1&&g2?Math.abs(g1-g2):null,conflict,help};
+            pair.crowding=!help.length && !!(anchors[i]&&anchors[j] || lows[i]&&lows[j]);
+            pair.mixed=!help.length && (!!(anchors[i]||lows[i])!==!!(anchors[j]||lows[j])) && !!g1 && !!g2;
             pairs.push(pair);details.push(pair);
             let soft=0;
             if((a.tags || []).includes('爱说话:'+b.name)||(b.tags || []).includes('爱说话:'+a.name))soft-=80;
             if((a.tags || []).includes('性格开朗')!==(b.tags || []).includes('性格开朗'))soft+=10;
-            for(const k of [i*n+j,j*n+i]){allowed[k]=+pair.allowed;mutual[k]=+pair.mutual;moderate[k]=+pair.moderate;balance[k]=pair.balance;urgency[k]=pair.urgency;single[k]=pair.single;behavior[k]=soft;}
+            for(const k of [i*n+j,j*n+i]){allowed[k]=+pair.allowed;mutual[k]=+pair.mutual;moderate[k]=+pair.moderate;balance[k]=pair.balance;urgency[k]=pair.urgency;single[k]=pair.single;behavior[k]=soft;crowding[k]=+pair.crowding;mixed[k]=+pair.mixed;conflicts[k]=+conflict;}
         }
         const groups=data.groups(seatMap,settings.groupSize || 6,settings.seatIds),seatGroups=new Int16Array(seatMap.length),neighbors=groups.map(()=>[]);
         groups.forEach((g,gi)=>g.forEach(s=>{if(s<seatMap.length)seatGroups[s]=gi;}));
         groups.forEach((g,gi)=>groups.forEach((h,hj)=>{if(gi!==hj&&g.some(a=>h.some(b=>Math.abs(Math.floor(a/8)-Math.floor(b/8))+Math.abs(a%8-b%8)===1)))neighbors[gi].push(hj);}));
+        const reinforcementEdges=[];
+        groups.forEach((g,a)=>neighbors[a].filter(b=>b>a).forEach(b=>{
+            const near=g.flatMap(i=>groups[b].filter(j=>Math.abs(Math.floor(i/8)-Math.floor(j/8))+Math.abs(i%8-j%8)===1).map(j=>[i,j]));
+            reinforcementEdges.push({a,b,horizontal:Math.floor(g[0]%8/2)!==Math.floor(groups[b][0]%8/2),near});
+        }));
         const fixed=original.map(i=>i>=0&&students[i].status==='fixed'),movable=original.map((s,i)=>s>=0&&!fixed[i]?i:-1).filter(i=>i>=0);
-        return {n,names,original,allowed,mutual,moderate,balance,urgency,single,behavior,anchors,groups,seatGroups,neighbors,fixed,movable,pairs,details,seatIds:settings.seatIds,studentTags:students.map(s=>s.tags || []),groupSize:settings.groupSize || 6};
+        return {n,names,original,allowed,mutual,moderate,balance,urgency,single,behavior,anchors,lows,crowding,mixed,conflicts,groups,seatGroups,neighbors,reinforcementEdges,fixed,movable,pairs,details,seatIds:settings.seatIds,studentTags:students.map(s=>s.tags || []),groupSize:settings.groupSize || 6};
+    }
+    function reinforcement(c,map) {
+        const high=c.groups.map(g=>g.map(i=>map[i]).filter(s=>s>=0&&c.anchors[s]));
+        const states=c.reinforcementEdges.map(e=>!high[e.a].some(a=>high[e.b].some(b=>!c.conflicts[a*c.n+b]))?0:e.near.some(([i,j])=>map[i]>=0&&map[j]>=0&&c.anchors[map[i]]&&c.anchors[map[j]]&&!c.conflicts[map[i]*c.n+map[j]])?2:1);
+        const key=states.join('');let cache=reinforcementCaches.get(c);
+        if(!cache){cache=new Map();reinforcementCaches.set(c,cache);}if(cache.has(key))return cache.get(key);
+        const bits=c.groups.map((_,i)=>1n<<BigInt(i)),edges=c.groups.map(()=>[]);let mask=0n;
+        states.forEach((state,i)=>{if(!state)return;const e=c.reinforcementEdges[i],value=e.horizontal?[state,0,+(state===2),0,1,0]:[0,state,0,+(state===2),0,1];edges[e.a].push({other:e.b,value});edges[e.b].push({other:e.a,value});mask|=bits[e.a]|bits[e.b];});
+        const memo=new Map(),better=(a,b)=>{for(let i=0;i<a.length;i++)if(a[i]!==b[i])return a[i]>b[i];return false;};
+        function solve(remaining) {
+            if(!remaining)return [0,0,0,0,0,0];if(memo.has(remaining))return memo.get(remaining);
+            let v=-1,degree=Infinity;
+            for(let i=0;i<bits.length;i++)if(remaining&bits[i]){const d=edges[i].filter(e=>remaining&bits[e.other]).length;if(d<degree){v=i;degree=d;if(!d)break;}}
+            const rest=remaining^bits[v];let best=solve(rest);
+            for(const e of edges[v])if(rest&bits[e.other]){const value=solve(rest^bits[e.other]).map((x,i)=>x+e.value[i]);if(better(value,best))best=value;}
+            memo.set(remaining,best);return best;
+        }
+        const result=solve(mask);if(cache.size>=4096)cache.clear();cache.set(key,result);return result;
     }
     function evaluate(c,map) {
-        const m={dual:0,own:0,adjacent:0,moderate:0,balance:0,urgency:0,single:0,behavior:0,desks:0,violations:0,activeGroups:0},coverage=new Uint8Array(c.groups.length),active=new Uint8Array(c.groups.length);
+        const m={dual:0,oneWay:0,crowding:0,highCrowding:0,lowCrowding:0,mixed:0,own:0,adjacent:0,moderate:0,balance:0,urgency:0,single:0,behavior:0,desks:0,violations:0,activeGroups:0},coverage=new Uint8Array(c.groups.length),active=new Uint8Array(c.groups.length);
         for(let i=0;i<map.length;i++) {
             const s=map[i];if(s<0)continue;
             const g=c.seatGroups[i];active[g]=1;if(c.anchors[s])coverage[g]=1;
@@ -42,8 +73,10 @@
         for(let i=0;i+1<map.length;i+=2) {
             const a=map[i],b=map[i+1];if(a<0||b<0)continue;const k=a*c.n+b;m.desks++;
             if(!c.allowed[k]){m.violations++;continue;}
-            m.behavior+=c.behavior[k];if(c.mutual[k]){m.dual++;m.moderate+=c.moderate[k];m.balance+=c.balance[k];m.urgency+=c.urgency[k];}else m.single+=c.single[k];
+            m.behavior+=c.behavior[k];if(c.mutual[k]){m.dual++;m.moderate+=c.moderate[k];m.balance+=c.balance[k];m.urgency+=c.urgency[k];}else if(c.single[k]){m.oneWay++;m.single+=c.single[k];}
+            if(c.crowding[k]){m.crowding++;if(c.anchors[a])m.highCrowding++;else m.lowCrowding++;}m.mixed+=c.mixed[k];
         }
+        [m.horizontalStrength,m.verticalStrength,m.horizontalClose,m.verticalClose,m.horizontal,m.vertical]=reinforcement(c,map);
         return m;
     }
     function rebase(c,students,map) {
@@ -69,8 +102,8 @@
     }
     function compare(a,b,mode) {
         if(!b)return 1;
-        const order=mode==='behavior'?['behavior','dual','own','adjacent','moderate','balance','urgency','single']:mode==='social'?['own','adjacent','dual','moderate','balance','urgency','single','behavior']:['dual','own','adjacent','moderate','balance','urgency','single','behavior'];
-        for(const key of order)if(a[key]!==b[key])return a[key]>b[key]?1:-1;
+        const order=mode==='behavior'?behaviorOrder:mode==='social'?socialOrder:academicOrder;
+        for(const key of order){const x=a[key] || 0,y=b[key] || 0;if(x!==y)return key==='crowding'?(x<y?1:-1):(x>y?1:-1);}
         return 0;
     }
     function rng(seed) {let x=seed>>>0 || 1;return ()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296;};}
@@ -85,7 +118,7 @@
             else if(map[i]>=0&&map[i+1]>=0&&!c.allowed[map[i]*c.n+map[i+1]])return null;
         }
         let nodes=0;const chosen=[];
-        const preference=(a,b)=>{const k=a*c.n+b;return c.mutual[k]*100+c.moderate[k]*8+c.balance[k]+c.urgency[k]*.1-(c.anchors[a]&&c.anchors[b]?5:0)+random()*18;};
+        const preference=(a,b)=>{const k=a*c.n+b;return c.mutual[k]*100+(c.single[k]?30:0)+c.moderate[k]*8+c.balance[k]+c.urgency[k]*.1-c.crowding[k]*5+c.mixed[k]*3+random()*18;};
         function match(remaining) {
             if(++nodes>12000||now()>deadline)return false;
             if(!remaining.length)return true;

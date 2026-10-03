@@ -182,7 +182,7 @@ SeatingModule.prototype.buildLayoutHTML = function() {
                 '<button class="btn2-mode mode-academic" data-sm-mode="academic">\u{1F4DA} 学业互补</button>' +
                 '<button class="btn2-mode mode-behavior" data-sm-mode="behavior">\u{1F6E1}\uFE0F 行为管理</button>' +
                 '<button class="btn2-mode mode-social" data-sm-mode="social">\u{1F465} 社交拓展</button>' +
-                '<p class="mode-hint">学业 / 智能：互补→本组高分覆盖→邻组补充→适中差距→科目均衡。搜索默认5秒。</p>' +
+                '<p class="mode-hint">学业 / 智能：互补优先→无互补混搭→本组覆盖→左右强化。搜索默认5秒。</p>' +
                 '<div class="mode-divider">\u{1F504} 轮换操作</div>' +
                 '<div style="display:flex;gap:6px;margin-top:4px;">' +
                     '<select id="sm-rotationMode" style="flex:1;padding:7px 6px;border:1px solid var(--seating-border);border-radius:var(--seating-radius-sm);font-size:.72rem;background:var(--seating-surface);color:var(--seating-text2);cursor:pointer;">' +
@@ -237,6 +237,8 @@ SeatingModule.prototype.buildLayoutHTML = function() {
                         '<div><b>同桌硬约束：</b>总分层差≤2；关系不和不可同桌</div>' +
                         '<div><b>适中差距：</b>总分位置差>10且≤25个百分点</div>' +
                         '<div><b>高分辐射：</b>班内总分前20%优先分散到本组，缺少时由上下左右相邻组补充</div>' +
+                        '<div><b>同桌分散：</b>仅无学科帮助时减少高＋高、低＋低，优先高＋中、中＋低；高低分按班内前后20%识别</div>' +
+                        '<div><b>邻组强化：</b>左右优先于上下；实际靠近奖励更高，每组最多参与一次</div>' +
                         '<div><b>学习小组：</b>按高级设置分组</div>' +
                         '<div><b>成绩口径：</b>所选两次考试的位置等权平均；每科独立有效人数，同分并列，8层各12.5点；缺失不计</div>' +
                         '<div><b>轮换：</b>后移一排 / 同桌对调 / S型流动 / 大循环</div>' +
@@ -320,7 +322,7 @@ SeatingModule.prototype.buildLayoutHTML = function() {
             '</div>'+
             '<div class="tag-section">' +
                 '<span class="tag-section-title">固定优化顺序</span>' +
-                '<p class="sm-academic-note">学业与智能排座：双向互补 → 本组高分覆盖 → 邻组补充 → 适中差距 → 双向科目均衡 → 急迫性 → 单向补充。行为专项先改善行为标签，社交专项先改善小组覆盖；所有模式都遵守硬约束。</p>'+
+                '<p class="sm-academic-note">学业与智能排座：双向互补 → 单向帮助 → 减少无互补同类同桌 → 无互补混搭 → 本组高分覆盖 → 左右强化 → 上下强化 → 邻组补充 → 适中差距 → 科目均衡 → 急迫性。行为专项先改善行为标签，社交专项先改善本组覆盖；所有模式都遵守硬约束。</p>'+
             '</div>' +
             '<button class="btn2 btn2-blue" style="margin-top:20px" id="sm-btnApplyAdvanced">应用高级设置</button>' +
             '<button class="btn2 btn2-toggle" style="margin-top:8px" id="sm-btnResetAdvanced">重置为默认</button>' +
@@ -638,7 +640,7 @@ SeatingModule.prototype.runOptimization = async function(type) {
         if(!result.valid||!result.solution||!SeatingData.validMap(result.solution,this.students,original,this.seatIds)){showAlert(result.reason || '排座校验失败，原排位已保留');return;}
         this.lastOptimization={metrics:result.metrics,evaluations:result.evaluations,rejected:result.rejected,elapsedMs:result.elapsedMs};
         this.seatMap=result.solution;await this.saveAndRender('智能排座：'+type);
-        var message='搜索完成：双向互补 '+result.metrics.dual+' 对，本组高分覆盖 '+result.metrics.own+'/'+result.metrics.activeGroups+' 组，适中互补 '+result.metrics.moderate+' 对；有效评分 '+result.evaluations.toLocaleString()+' 次。';
+        var message='搜索完成：双向互补 '+result.metrics.dual+' 对，单向帮助 '+result.metrics.oneWay+' 对，无互补同类同桌 '+result.metrics.crowding+' 对，本组高分覆盖 '+result.metrics.own+'/'+result.metrics.activeGroups+' 组，左右强化 '+result.metrics.horizontal+' 对；有效评分 '+result.evaluations.toLocaleString()+' 次。';
         var output=this.root.querySelector('#sm-searchStatus');if(output)output.textContent=message;
         showAlert(message+'已保留本次搜索找到的最佳方案。');
     }catch(error){showAlert('排座失败，原排位已保留：'+error.message);}
@@ -955,7 +957,13 @@ SeatingModule.prototype.calculateSeatingStats = function() {
         '重点关注学生': { value: specialStudents, description: '重点关注的学生数' },
         '禁止配对同桌': { value: metrics.violations, description: '总分层差超限、缺失总分或关系不和的同桌对数' },
         '双向互补同桌': {value:metrics.dual,description:'双方各至少一科达到帮助阈值'},
+        '单向帮助同桌': {value:metrics.oneWay,description:'仅一方有科目达到帮助阈值，优先于无帮助同桌'},
+        '无互补高高同桌': {value:metrics.highCrowding,description:'无任何有效学科帮助且双方均在班内总分前20%'},
+        '无互补低低同桌': {value:metrics.lowCrowding,description:'无任何有效学科帮助且双方均在班内总分后20%'},
+        '无互补混搭同桌': {value:metrics.mixed,description:'无学科帮助时的高＋中或中＋低组合'},
         '本组高分覆盖': {value:metrics.own+'/'+metrics.activeGroups,description:'本组至少一名班内总分前20%学生'},
+        '左右高分强化': {value:metrics.horizontal,description:'左右邻组高分组合；其中实际靠近'+metrics.horizontalClose+'对，每组最多参与一次'},
+        '上下高分强化': {value:metrics.vertical,description:'上下邻组高分组合；其中实际靠近'+metrics.verticalClose+'对，和左右强化共用每组一次的限制'},
         '邻组补充覆盖': {value:metrics.adjacent,description:'本组缺少高分学生，由上下左右邻组补充'},
         '适中互补同桌': {value:metrics.moderate,description:'双向互补且总分位置差>10、≤25个百分点'},
         '双向科目均衡': {value:metrics.balance,description:'每对双方帮助科目数较小值的合计'},
@@ -1152,7 +1160,7 @@ SeatingModule.prototype.renderRightSidebarStats = function() {
         '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eee;"><span>重点关注</span><span><b>' + specialCount + '</b></span></div>';
     try {
         var context=this.getAcademicContext(),metrics=SeatingEngine.evaluate(context,context.original);
-        statsEl.innerHTML+=[['双向互补',metrics.dual+' / '+metrics.desks+' 对'],['本组高分覆盖',metrics.own+' / '+metrics.activeGroups+' 组'],['邻组补充',metrics.adjacent+' 组'],['适中互补',metrics.moderate+' 对'],['科目均衡',metrics.balance],['硬约束违规',metrics.violations+' 对']].map(function(item){return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--seating-border);"><span>'+item[0]+'</span><b>'+item[1]+'</b></div>';}).join('');
+        statsEl.innerHTML+=[['双向互补',metrics.dual+' / '+metrics.desks+' 对'],['单向帮助',metrics.oneWay+' 对'],['无互补高＋高',metrics.highCrowding+' 对'],['无互补低＋低',metrics.lowCrowding+' 对'],['无互补混搭',metrics.mixed+' 对'],['本组高分覆盖',metrics.own+' / '+metrics.activeGroups+' 组'],['左右高分强化',metrics.horizontal+' 对（近邻'+metrics.horizontalClose+'）'],['上下高分强化',metrics.vertical+' 对（近邻'+metrics.verticalClose+'）'],['邻组补充',metrics.adjacent+' 组'],['适中互补',metrics.moderate+' 对'],['科目均衡',metrics.balance],['硬约束违规',metrics.violations+' 对']].map(function(item){return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--seating-border);"><span>'+item[0]+'</span><b>'+item[1]+'</b></div>';}).join('');
     }catch(error){statsEl.innerHTML+='<p>'+escapeHtml(error.message)+'</p>';}
     var gradDist = {};
     this.students.forEach(function(s) { var g = s.gradient || 0; gradDist[g] = (gradDist[g] || 0) + 1; });
