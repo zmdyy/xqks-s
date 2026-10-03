@@ -4,10 +4,11 @@
 // ============================================================
 //  座位 — 数据构建
 // ============================================================
-function buildSeatingProfiles(className) {
+function buildSeatingProfiles(className, academic) {
     return SeatingData.buildProfiles(combinedStudentData, allSubjectHeaders, className,
         getTotalSubjectName(allSubjectHeaders, combinedStudentData), DataPool.batches,
-        typeof COMBINED_SUBJECT_NAMES !== 'undefined' ? Array.from(COMBINED_SUBJECT_NAMES) : []);
+        typeof COMBINED_SUBJECT_NAMES !== 'undefined' ? Array.from(COMBINED_SUBJECT_NAMES) : [],
+        Object.assign({},academic || (seatingModuleInstance?.className===className?seatingModuleInstance.advancedSettings.academic:{}),{currentBatchId:DataPool.currentBatchId}));
 }
 var seatingStore = SeatingData.createStore(AppCore.storage, {
     getItem: function(key) { return window.localStorage.getItem(key); },
@@ -47,6 +48,7 @@ function SeatingModule(rootEl) {
     this.currentSnapshotIndex = -1;
     this.advancedSettings = {
         layout: 'default', groupSize: 6, customGroupSize: null,
+        academic: {currentExam:'@current',compareExam:'',scope:'auto',populations:{}},searchBudgetMs:5000,
         weights: { complement: 1.0, behavior: 1.0, group: 1.0, constraints: 1.0, balance: 1.0 }
     };
     this.GRADIENT_COLORS = ['#1a237e','#283593','#1565c0','#1976d2','#f57f17','#e65100','#bf360c','#b71c1c'];
@@ -76,60 +78,39 @@ SeatingModule.prototype.init = function(profiles, options) {
         this.seatMap.fill(null);
         this.assignInitialSeats();
     }
+    this.normalizeSettings();
     this.render(); this.renderHistory(); this.initModalPools(); this.renderRightSidebarStats();
 };
 
-// Overall class-relative position already accounts for score ties and missing data.
+SeatingModule.prototype.normalizeSettings = function() {
+    this.advancedSettings.academic=this.advancedSettings.academic || {currentExam:'@current',compareExam:'',scope:'auto',populations:{}};
+    this.advancedSettings.searchBudgetMs=Number(this.advancedSettings.searchBudgetMs) || 5000;
+    this.advancedSettings.groupSize=Math.max(2,Math.min(12,this.advancedSettings.groupSize || 6));this.advancedSettings.groupSize+=this.advancedSettings.groupSize%2;
+    this.advancedSettings.weights=Object.assign({complement:1,behavior:1,group:1,constraints:1,balance:1},this.advancedSettings.weights);
+};
+
+// Total and subject positions share the same competition-rank boundaries.
 SeatingModule.prototype.calculateGradients = function() {
     this.students.forEach(function(s) {
-        s.gradient = Number.isFinite(s.compositeRank) ? Math.min(8, Math.floor(s.compositeRank / 12.5) + 1) : 0;
+        s.gradient = SeatingData.layer(s.compositeRank);
     });
 };
 SeatingModule.prototype.getComplementScore = function(diff) {
     if (!Number.isFinite(diff) || diff < 0) return 0;
-    if (diff >= 5) return -200;
-    if (diff === 0) return 25;
-    if (diff === 1) return 50;
-    if (diff === 2) return 80;
-    if (diff === 3) return 100;
-    if (diff === 4) return 60;
-    return -200;
+    return diff<=2?1:0;
 };
 SeatingModule.prototype.isForbiddenPair = function(g1, g2) {
     if (!g1 || !g2) return false;
-    if (Math.abs(g1 - g2) >= 5) return true;
-    if (g1 === 8 && g2 === 8) return true;
-    if ((g1 === 7 && g2 === 8) || (g1 === 8 && g2 === 7)) return true;
-    return false;
+    return Math.abs(g1-g2)>2;
 };
 SeatingModule.prototype.assignInitialSeats = function() {
-    var seated = this.seatMap.filter(function(n) { return n && n !== '\u{1F6AB}'; });
-    var unseated = this.students.filter(function(s) { return seated.indexOf(s.name) < 0; });
-    if (unseated.length === 0) return;
-    var pool = this.students.filter(function(s) { return s.status !== 'empty'; }).map(function(s) { return { name: s.name, gradient: s.gradient }; });
-    var pairs = [];
-    while (pool.length > 1) {
-        pool.sort(function(a, b) { return a.gradient - b.gradient; });
-        var bestPair = null, bestDiff = Infinity;
-        for (var i = 0; i < Math.min(pool.length, 10); i++) {
-            for (var j = i + 1; j < Math.min(pool.length, i + 10); j++) {
-                var diff = Math.abs(pool[i].gradient - pool[j].gradient);
-                var score = Math.abs(diff - 3);
-                if (score < bestDiff || (score === bestDiff && Math.random() < 0.3)) { bestDiff = score; bestPair = [i, j]; }
-            }
-        }
-        if (bestPair) { var pi = bestPair; pairs.push([pool[pi[0]].name, pool[pi[1]].name]); pool.splice(pi[1], 1); pool.splice(pi[0], 1); }
-        else break;
-    }
-    if (pool.length === 1) pairs.push([pool[0].name, null]);
-    var emptyIndices = [];
-    this.seatMap.forEach(function(n, i) { if (!n || n === '\u{1F6AB}') emptyIndices.push(i); });
-    pairs.forEach(function(pair, pi) {
-        if (pi * 2 >= emptyIndices.length) return;
-        var idx1 = emptyIndices[pi * 2], idx2 = emptyIndices[pi * 2 + 1];
-        if (idx1 !== undefined && this.seatMap.indexOf(pair[0]) < 0) this.seatMap[idx1] = pair[0];
-        if (idx2 !== undefined && pair[1] && this.seatMap.indexOf(pair[1]) < 0) this.seatMap[idx2] = pair[1];
-    }, this);
+    var present=new Set(this.seatMap.filter(Boolean)),free=[];
+    this.seatMap.forEach(function(name,i){if(name===null)free.push(i);});
+    this.students.filter(function(student){return !present.has(student.name);}).forEach(function(student,i){if(free[i]!==undefined)this.seatMap[free[i]]=student.name;},this);
+    // The first arrangement uses the same hard rules and pair cache as later searches.
+    var context=this.getAcademicContext();
+    var candidate=SeatingEngine.initial(context,Math.random,performance.now()+150);
+    if(candidate)this.seatMap=candidate.map(function(i){return i===-2?'🚫':i<0?null:context.names[i];});
 };
 
 // 初始化弹窗标签池
@@ -151,12 +132,46 @@ SeatingModule.prototype.render = function() {
     this.renderGrid();
 };
 
+SeatingModule.prototype.buildAcademicControls = function() {
+    var settings=this.advancedSettings.academic || {},primary=settings.currentExam || '@current',compare=settings.compareExam || '',actual=primary==='@current'?DataPool.currentBatchId:primary;
+    var options=[{id:'@current',label:'当前成绩（跟随主批次）'}].concat(DataPool.batches);
+    if(!options.some(function(b){return b.id===primary;}))options.push({id:primary,label:'考试已删除，请重新选择'});
+    var first=options.map(function(b){return '<option value="'+escapeHtml(b.id)+'"'+(b.id===primary?' selected':'')+'>'+escapeHtml(b.label)+'</option>';}).join('');
+    var second='<option value="">只使用本次考试</option>'+DataPool.batches.filter(function(b){return b.id!==actual;}).map(function(b){return '<option value="'+escapeHtml(b.id)+'"'+(b.id===compare?' selected':'')+'>'+escapeHtml(b.label)+'</option>';}).join('');
+    if(compare===actual)second+='<option selected value="'+escapeHtml(compare)+'">与本次相同，仅计一次</option>';
+    if(compare&&!DataPool.batches.some(function(b){return b.id===compare;}))second+='<option selected value="'+escapeHtml(compare)+'">对照考试已删除，请重新选择</option>';
+    var info=this.students[0],scope=info?.scopeLabel || '成绩数据不足',two=this.students.filter(function(s){return s.sampleCount===2;}).length;
+    return '<label class="sm-data-label">本次考试<select id="sm-currentExam">'+first+'</select></label>'+
+        '<label class="sm-data-label">对照考试<select id="sm-compareExam">'+second+'</select></label>'+
+        '<label class="sm-data-label">成绩口径<select id="sm-academicScope">'+[['auto','自动判断'],['grade','年级成绩'],['class','班内预实验']].map(function(p){return '<option value="'+p[0]+'"'+((settings.scope || 'auto')===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('')+'</select></label>'+
+        '<p class="sm-academic-note">'+escapeHtml(scope)+'；'+(compare?'两次总分有效 '+two+'人，其余按单次有效记录或缺失处理':'仅使用本次有效记录')+'。单科分别统计；缺失不补0。</p>'+
+        '<p class="sm-academic-note">年级依据不足时，自动模式统一使用班内预实验。多班数据须在高级排位确认已覆盖全年级。年级名次仅覆盖部分学生时，请在高级排位填写有效人数。</p>'+
+        '<p id="sm-searchStatus" role="status" aria-live="polite" class="sm-academic-note"></p>';
+};
+SeatingModule.prototype.getAcademicContext = function() {
+    var key=JSON.stringify([this.students.map(function(s){return [s.id,s.name,s.compositeRank,s.subjects,s.tags];}),this.seatMap.length,this.advancedSettings.groupSize]);
+    if(!this.academicCache || this.academicCache.key!==key)this.academicCache={key:key,context:SeatingEngine.prepare(this.students,this.seatMap,this.advancedSettings)};
+    return SeatingEngine.rebase(this.academicCache.context,this.students,this.seatMap);
+};
+SeatingModule.prototype.academicSelectionChanged = function() {
+    this.cancelOptimization();var settings=this.advancedSettings.academic;
+    settings.currentExam=this.root.querySelector('#sm-currentExam').value;settings.compareExam=this.root.querySelector('#sm-compareExam').value;settings.scope=this.root.querySelector('#sm-academicScope').value;
+    if(settings.compareExam===(settings.currentExam==='@current'?DataPool.currentBatchId:settings.currentExam))settings.compareExam='';
+    var saved=this.captureState('选择互补考试'),profiles=buildSeatingProfiles(this.className,settings);this.academicCache=null;
+    this.init(profiles,{className:this.className,saved:saved});this.saveSnapshot('选择互补考试并准备配对关系');
+};
+SeatingModule.prototype.buildPopulationInputs = function() {
+    var settings=(this.draftSettings || this.advancedSettings).academic || {},sources=SeatingData.examSources(combinedStudentData,allSubjectHeaders,getTotalSubjectName(allSubjectHeaders,combinedStudentData),DataPool.batches,Object.assign({},settings,{currentBatchId:DataPool.currentBatchId}));
+    var subjects=['*'].concat(Array.from(new Set(sources.flatMap(function(b){return (b.allSubjectHeaders || []).map(function(h){return h.name;});}))));
+    return '<p class="sm-academic-note">已导入全年级时请勾选确认，人数可留空。只有部分学生、但有年级名次时，填写该考试的年级有效人数；单科缺考人数不同，可单独填写。不能用本班人数替代年级人数。</p><div class="sm-population-table"><table><thead><tr><th>科目</th>'+sources.map(function(b){return '<th>'+escapeHtml(b.label || '当前成绩')+'<br><label><input type="checkbox" data-sm-grade-complete="'+escapeHtml(b.id)+'"'+(settings.completeGrades?.[b.id]?' checked':'')+'>已覆盖全年级</label></th>';}).join('')+'</tr></thead><tbody>'+subjects.map(function(sn){return '<tr><td>'+escapeHtml(sn==='*'?'统一有效人数':sn)+'</td>'+sources.map(function(b){return '<td><input aria-label="'+escapeHtml((b.label || '当前成绩')+' '+sn+'有效人数')+'" type="number" min="2" step="1" data-sm-population-exam="'+escapeHtml(b.id)+'" data-sm-population-subject="'+escapeHtml(sn)+'" value="'+escapeHtml((settings.populations || {})[b.id]?.[sn] || '')+'" placeholder="自动"></td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';
+};
 SeatingModule.prototype.buildLayoutHTML = function() {
     return '<div class="seating-layout">' +
         '<div class="seating-sidebar" id="sm-sidebar">' +
             '<div class="sb-card">' +
                 '<div class="sb-card-title">\u{1F4CA} 数据源</div>' +
                 '<p style="font-size:12px;color:#666;">来自成绩分析系统</p>' +
+                this.buildAcademicControls() +
                 '<button class="btn2 btn2-primary btn2-block" id="sm-btnRefresh">\u{1F504} 从当前数据刷新</button>' +
                 '<button class="btn2 btn2-toggle btn2-block" id="sm-btnToggleTags" style="margin-top:6px">\u{1F4CB} 标签：开</button>' +
             '</div>' +
@@ -167,7 +182,7 @@ SeatingModule.prototype.buildLayoutHTML = function() {
                 '<button class="btn2-mode mode-academic" data-sm-mode="academic">\u{1F4DA} 学业互补</button>' +
                 '<button class="btn2-mode mode-behavior" data-sm-mode="behavior">\u{1F6E1}\uFE0F 行为管理</button>' +
                 '<button class="btn2-mode mode-social" data-sm-mode="social">\u{1F465} 社交拓展</button>' +
-                '<p class="mode-hint">本次班内相对位置 L1–L8；优势科目与薄弱科目配对，缺失成绩不参与</p>' +
+                '<p class="mode-hint">学业 / 智能：互补→本组高分覆盖→邻组补充→适中差距→科目均衡。搜索默认5秒。</p>' +
                 '<div class="mode-divider">\u{1F504} 轮换操作</div>' +
                 '<div style="display:flex;gap:6px;margin-top:4px;">' +
                     '<select id="sm-rotationMode" style="flex:1;padding:7px 6px;border:1px solid var(--seating-border);border-radius:var(--seating-radius-sm);font-size:.72rem;background:var(--seating-surface);color:var(--seating-text2);cursor:pointer;">' +
@@ -216,10 +231,13 @@ SeatingModule.prototype.buildLayoutHTML = function() {
                 '<div class="sb-card">' +
                     '<div class="sb-card-title">\u2139\uFE0F 规则说明</div>' +
                     '<div style="font-size:0.75rem; line-height:1.8; color:#555;">' +
-                        '<div><b>配对规则：</b>跨3级最优(L差=3)</div>' +
-                        '<div><b>禁止配对：</b>L差\u22655, L7+L8 或 L8+L8</div>' +
+                        '<div><b>双向互补：</b>两人各有至少一科帮助对方</div>' +
+                        '<div><b>单科帮助：</b>层差≥1且位置差≥10点；2层、3层依次加分，3层以上封顶</div>' +
+                        '<div><b>同桌硬约束：</b>总分层差≤2；关系不和不可同桌</div>' +
+                        '<div><b>适中差距：</b>总分位置差>10且≤25个百分点</div>' +
+                        '<div><b>高分辐射：</b>班内总分前20%优先分散到本组，缺少时由上下左右相邻组补充</div>' +
                         '<div><b>学习小组：</b>按高级设置分组</div>' +
-                        '<div><b>成绩口径：</b>本次班内有效成绩，同分并列；优势相对位置≤20%，薄弱≥75%，缺失不计</div>' +
+                        '<div><b>成绩口径：</b>所选两次考试的位置等权平均；每科独立有效人数，同分并列，8层各12.5点；缺失不计</div>' +
                         '<div><b>轮换：</b>后移一排 / 同桌对调 / S型流动 / 大循环</div>' +
                     '</div>' +
                 '</div>' +
@@ -296,12 +314,12 @@ SeatingModule.prototype.buildLayoutHTML = function() {
                 '</div>' +
             '</div>' +
             '<div class="tag-section">' +
-                '<span class="tag-section-title">优化目标权重调整</span>' +
-                '<div style="margin-bottom:8px;"><label style="font-size:0.7rem;color:#666;">互补配对：<span id="sm-complementWeight">1.0</span></label><input type="range" id="sm-complementSlider" min="0" max="2" step="0.1" value="1.0" style="width:100%;"></div>' +
-                '<div style="margin-bottom:8px;"><label style="font-size:0.7rem;color:#666;">行为管理：<span id="sm-behaviorWeight">1.0</span></label><input type="range" id="sm-behaviorSlider" min="0" max="2" step="0.1" value="1.0" style="width:100%;"></div>' +
-                '<div style="margin-bottom:8px;"><label style="font-size:0.7rem;color:#666;">小组验证：<span id="sm-groupWeight">1.0</span></label><input type="range" id="sm-groupSlider" min="0" max="2" step="0.1" value="1.0" style="width:100%;"></div>' +
-                '<div style="margin-bottom:8px;"><label style="font-size:0.7rem;color:#666;">约束条件：<span id="sm-constraintsWeight">1.0</span></label><input type="range" id="sm-constraintsSlider" min="0" max="2" step="0.1" value="1.0" style="width:100%;"></div>' +
-                '<div style="margin-bottom:8px;"><label style="font-size:0.7rem;color:#666;">全局均衡：<span id="sm-balanceWeight">1.0</span></label><input type="range" id="sm-balanceSlider" min="0" max="2" step="0.1" value="1.0" style="width:100%;"></div>' +
+                '<span class="tag-section-title">年级有效人数</span><div id="sm-populationInputs">'+this.buildPopulationInputs()+'</div>'+
+                '<label class="sm-data-label">搜索时间<select id="sm-searchBudget"><option value="5000">5秒（默认）</option><option value="10000">10秒</option><option value="20000">20秒</option></select></label>'+
+            '</div>'+
+            '<div class="tag-section">' +
+                '<span class="tag-section-title">固定优化顺序</span>' +
+                '<p class="sm-academic-note">学业与智能排座：双向互补 → 本组高分覆盖 → 邻组补充 → 适中差距 → 双向科目均衡 → 急迫性 → 单向补充。行为专项先改善行为标签，社交专项先改善小组覆盖；所有模式都遵守硬约束。</p>'+
             '</div>' +
             '<button class="btn2 btn2-blue" style="margin-top:20px" id="sm-btnApplyAdvanced">应用高级设置</button>' +
             '<button class="btn2 btn2-toggle" style="margin-top:8px" id="sm-btnResetAdvanced">重置为默认</button>' +
@@ -312,6 +330,7 @@ SeatingModule.prototype.buildLayoutHTML = function() {
 
 SeatingModule.prototype.bindEvents = function() {
     var self = this;
+    ['#sm-currentExam','#sm-compareExam','#sm-academicScope'].forEach(function(id){self.root.querySelector(id).onchange=function(){self.academicSelectionChanged();};});
     // Refresh
     var btnRefresh = this.root.querySelector('#sm-btnRefresh');
     if (btnRefresh) btnRefresh.onclick = function() { self.loadFromCurrentData(); };
@@ -458,7 +477,7 @@ SeatingModule.prototype.renderGrid = function() {
                             if (p) {
                                 var pg = p.gradient || 0;
                                 var diff = s.gradient && p.gradient ? Math.abs(s.gradient - p.gradient) : null;
-                                tagsHtml += '<span class="mini-tag">同桌:' + this.gradientText(pg) + ' · 梯度分:' + this.getComplementScore(diff) + '</span><span class="mini-tag">学科互补:' + this.countHelpSubjects(s,p) + '科</span>';
+                                tagsHtml += '<span class="mini-tag">同桌:' + this.gradientText(pg) + ' · 总分层差:' + (diff ?? '未知') + '</span><span class="mini-tag">学科互补:' + this.countHelpSubjects(s,p) + '科</span>';
                             }
                         }
                         s.tags.filter(function(t) { return t.indexOf('关系不和') < 0 && t.indexOf('爱说话:') < 0; }).forEach(function(t) {
@@ -519,13 +538,14 @@ SeatingModule.prototype.openModal = function(name) {
     var deskPartner = seatIdx >= 0 ? this.getDeskPartner(seatIdx) : null;
     var partnerG = deskPartner ? (this.students.find(function(x) { return x.name === deskPartner; })?.gradient || 0) : 0;
     var diff = g && partnerG ? Math.abs(g - partnerG) : null;
-    var compScore = this.getComplementScore(diff);
     var subjectCount = Object.keys(s.subjects || {}).length;
     var groupMembers = seatIdx >= 0 ? this.getFourPersonGroup(seatIdx).filter(function(m) { return m.name !== s.name; }) : [];
     var groupHtml = groupMembers.map(function(m) { var mg = self.students.find(function(x) { return x.name === m.name; })?.gradient || 0; return '<span class="mini-tag">' + m.name + '(' + self.gradientText(mg) + ')</span>'; }).join(' ');
-    var gradientHtml = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span class="gradient-badge" style="background:' + gColor + '">' + gLabel + '</span><span><strong>梯度：</strong>' + gLabel + ' | 班内综合名次：' + (s.latestTotalRank || '?') + '/' + (s.totalPopulation || '?') + '</span></div>' +
-        '<div style="margin-top:4px;"><strong>同桌：</strong>' + (deskPartner || '无') + (deskPartner ? ' | 同桌梯度：' + this.gradientText(partnerG) + ' | 梯度配对分值：' + compScore + ' | 学科互补：' + this.countHelpSubjects(s,this.getStudent(deskPartner)) + '科' + (diff >= 5 ? '<span style="color:red;margin-left:8px;"> ⚠️ 禁止配对！</span>' : '') : '') + '</div>' +
-        '<div style="margin-top:4px;"><strong>四人小组：</strong>' + (groupHtml || '未就座') + '</div>' +
+    var partner=this.getStudent(deskPartner),help=partner?SeatingData.complementDetails(s,partner):[],mutual=help.some(function(d){return d.helper===s.name;})&&help.some(function(d){return d.helper===deskPartner;});
+    var gradientHtml = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span class="gradient-badge" style="background:' + gColor + '">' + gLabel + '</span><span><strong>总分层次：</strong>' + gLabel + ' | 本次所选口径名次：' + (s.latestTotalRank || '?') + '/' + (s.totalPopulation || '?') + '</span></div>' +
+        '<div style="margin-top:4px;"><strong>同桌：</strong>' + escapeHtml(deskPartner || '无') + (deskPartner ? ' | 总分层差：' + (diff ?? '未知') + ' | 双向互补：' + (mutual?'是':'否') + (diff>2 ? '<span style="color:red;margin-left:8px;">总分层差超限</span>' : '') : '') + '</div>' +
+        '<div style="margin-top:4px;">'+help.map(function(d){return escapeHtml(d.subject+'：'+d.helper+'→'+d.recipient+'（层差'+d.layerGap+'，位置差'+d.positionGap.toFixed(1)+'点）');}).join('<br>')+'</div>'+
+        '<div style="margin-top:4px;"><strong>学习小组：</strong>' + (groupHtml || '未就座') + '</div>' +
         (s.leadingSubjects ? '<div style="margin-top:4px;"><strong>领先科目：</strong><span class="mini-tag good">' + s.leadingSubjects + '</span></div>' : '') +
         (s.weakSubjects ? '<div style="margin-top:4px;"><strong>薄弱科目：</strong><span class="mini-tag bad">' + s.weakSubjects + '</span></div>' : '') +
         (subjectCount > 0 ? '<div style="margin-top:4px;font-size:0.7rem;color:#999;">已解析 ' + subjectCount + ' 科趋势数据</div>' : '');
@@ -557,265 +577,61 @@ SeatingModule.prototype.updateStatus = function(stat) {
 SeatingModule.prototype.updateAnalysis = function(s) {
     var section=this.root.querySelector('#sm-analysisSection');if(section)section.style.display='block';
     var position=Number.isFinite(s.compositeRank)?s.compositeRank.toFixed(1)+'%（越小越靠前）':'数据不足';
-    var html='<div class="analysis-item"><strong>本次班内相对位置：</strong>'+position+'</div>'+
+    var html='<div class="analysis-item"><strong>所选考试平均位置：</strong>'+position+'；有效考试 '+(s.sampleCount || 0)+'次</div>'+
         '<div class="analysis-item"><strong>综合依据：</strong>'+escapeHtml(s.totalSource || '总分')+'；有效人数 '+(s.totalPopulation || 0)+'</div>'+
-        '<div class="analysis-item"><strong>班内综合名次：</strong>'+(s.latestTotalRank ?? '—')+'；梯度 '+this.gradientText(s.gradient)+'</div>'+
-        '<div class="analysis-item"><strong>原年级总分名次：</strong>'+(s.gradeRank ?? '—')+'（仅展示，不作班内百分比的分母）</div>'+
-        '<div class="analysis-item"><strong>近三批次班内总分名次：</strong>'+escapeHtml((s.totalTrend || []).join(' → ') || '无')+'</div>';
+        '<div class="analysis-item"><strong>本次所选口径名次：</strong>'+(s.latestTotalRank ?? '—')+'；总分层次 '+this.gradientText(s.gradient)+'</div>'+
+        '<div class="analysis-item"><strong>本次 / 对照：</strong>'+escapeHtml((s.examLabels || []).join(' / ') || '无')+'；名次 '+escapeHtml((s.totalTrend || []).join(' / ') || '无')+'</div>';
     Object.entries(s.subjects || {}).forEach(function(pair) {
         var sn=pair[0],sd=pair[1],pct=Number.isFinite(sd.percentile)?sd.percentile.toFixed(1)+'%':'数据不足';
-        html+='<div class="analysis-item"><strong>'+escapeHtml(sn)+':</strong> 本次得分 '+(sd.score ?? '—')+'；班内名次 '+(sd.rank ?? '—')+'/'+(sd.population || 0)+'；相对位置 '+pct+
-            '<br><span style="color:#666">'+escapeHtml(sd.source || '')+'；历史班内名次 '+escapeHtml((sd.trend || []).join(' → ') || '无')+'</span></div>';
+        html+='<div class="analysis-item"><strong>'+escapeHtml(sn)+':</strong> 本次得分 '+(sd.score ?? '—')+'；本次名次 '+(sd.rank ?? '—')+'/'+(sd.population || 0)+'；平均位置 '+pct+
+            '<br><span style="color:#666">'+escapeHtml(sd.source || '')+'；本次 / 对照名次 '+escapeHtml((sd.trend || []).join(' / ') || '无')+'</span></div>';
     });
     var el=this.root.querySelector('#sm-analysisContent');if(el)el.innerHTML=html;
 };
 
-// 智能排位优化
-SeatingModule.prototype.runOptimization = function(type) {
-    var modeButtons = this.root.querySelectorAll('.btn2-mode');
-    modeButtons.forEach(function(btn) { btn.classList.remove('active'); });
-    var activeBtn = this.root.querySelector('.btn2-mode.mode-' + type);
-    if (activeBtn) activeBtn.classList.add('active');
-    if (!this.students.length) { showAlert('当前没有学生数据'); return; }
-    var movableCount = this.students.filter(function(s) { return s.status !== 'fixed' && s.status !== 'empty'; }).length;
-    if (movableCount <= 1) { showAlert('可移动学生数量不足，无法进行优化。'); return; }
-    this.calculateGradients();
-    var optimizer = new this.SeatingOptimizer(this.students, this.seatMap, this.advancedSettings, this);
-    var result = optimizer.optimizeForTarget(type);
-    var nextMap = result.solution || this.seatMap;
-    if (this.areSeatMapsEqual(nextMap, this.seatMap)) { showAlert('优化后座位无变化。'); return; }
-    if(!SeatingData.validMap(nextMap,this.students,this.seatMap)){showAlert('排座校验失败，原排位已保留');return;}
-    this.seatMap = nextMap;
-    this.saveAndRender('智能排座：'+type);
-    showAlert('优化完成！最终得分: ' + result.score.toFixed(2));
+// Search runs off the UI thread; stale results never overwrite a later manual edit.
+SeatingModule.prototype.cancelOptimization = function() {
+    if(this.searchJob){if(this.searchJob.worker)this.searchJob.worker.terminate();if(this.searchJob.cancel)this.searchJob.cancel();this.searchJob=null;}
+};
+SeatingModule.prototype.runOptimization = async function(type) {
+    if(this.searchJob)return;
+    if(!this.students.length){showAlert('当前没有学生数据');return;}
+    var context;try{context=this.getAcademicContext();}catch(error){showAlert(error.message);return;}
+    if(context.movable.length<2){showAlert('已入座的可移动学生不足，待分配名单不会自动加入搜索');return;}
+    var self=this,epoch=seatingLoadEpoch,sourceEpoch=dataEpoch,signature=JSON.stringify(this.captureState('搜索输入').students),original=this.seatMap.slice();
+    var options={mode:type,budgetMs:this.advancedSettings.searchBudgetMs || 5000},job={};this.searchJob=job;
+    var status=this.root.querySelector('#sm-searchStatus');
+    function progress(info){if(self.searchJob!==job)return;var el=self.root.querySelector('#sm-searchStatus');if(el)el.textContent='正在搜索 · 已评分 '+info.evaluations.toLocaleString()+' 次 · '+(info.elapsedMs/1000).toFixed(1)+'秒';}
+    if(status)status.textContent='已缓存 '+context.pairs.length+' 对学生关系，正在搜索…';
+    this.root.querySelectorAll('#sm-btnOptimize,[data-sm-mode]').forEach(function(b){b.disabled=true;});
+    function fallback(){return new Promise(function(resolve){var run=new SeatingEngine.Search(context,options);job.cancel=function(){resolve(null);};function chunk(){if(self.searchJob!==job){resolve(null);return;}if(run.step(400)){progress({evaluations:run.evaluations,elapsedMs:performance.now()-run.started});setTimeout(chunk,0);}else resolve(run.result());}setTimeout(chunk,0);});}
+    try {
+        var result;
+        if(typeof Worker==='function') {
+            try{result=await new Promise(function(resolve,reject){var worker=new Worker('seating-search-worker.js');job.worker=worker;job.cancel=function(){resolve(null);};worker.onmessage=function(e){if(e.data.progress)progress(e.data);else if(e.data.error){worker.terminate();reject(new Error(e.data.error));}else{worker.terminate();resolve(e.data.result);}};worker.onerror=function(e){worker.terminate();reject(new Error(e.message || '后台搜索不可用'));};worker.postMessage({context:context,options:options});});}
+            catch(error){if(self.searchJob===job)result=await fallback();}
+        }else result=await fallback();
+        if(!result||this.searchJob!==job||seatingModuleInstance!==this||epoch!==seatingLoadEpoch||sourceEpoch!==dataEpoch||JSON.stringify(this.students)!==signature||!this.areSeatMapsEqual(original,this.seatMap))return;
+        this.searchJob=null;
+        if(!result.valid||!result.solution||!SeatingData.validMap(result.solution,this.students,original)){showAlert(result.reason || '排座校验失败，原排位已保留');return;}
+        this.lastOptimization={metrics:result.metrics,evaluations:result.evaluations,rejected:result.rejected,elapsedMs:result.elapsedMs};
+        this.seatMap=result.solution;await this.saveAndRender('智能排座：'+type);
+        var message='搜索完成：双向互补 '+result.metrics.dual+' 对，本组高分覆盖 '+result.metrics.own+'/'+result.metrics.activeGroups+' 组，适中互补 '+result.metrics.moderate+' 对；有效评分 '+result.evaluations.toLocaleString()+' 次。';
+        var output=this.root.querySelector('#sm-searchStatus');if(output)output.textContent=message;
+        showAlert(message+'已保留本次搜索找到的最佳方案。');
+    }catch(error){showAlert('排座失败，原排位已保留：'+error.message);}
+    finally{if(this.searchJob===job)this.searchJob=null;this.root.querySelectorAll('#sm-btnOptimize,[data-sm-mode]').forEach(function(b){b.disabled=false;});}
 };
 
-// SeatingOptimizer 遗传算法优化器（内嵌）
-SeatingModule.prototype.SeatingOptimizer = function(students, seatMap, advancedSettings, parent) {
-    this.students = students;
-    this.initialMap = seatMap;
-    this.parent = parent;
-    this.config = { populationSize: 100, maxIterations: 100, mutationRate: 0.25, elitismCount: 6 };
-    this.weights = {};
-    this.studentMap = new Map(students.map(function(s) { return [s.name, s]; }));
-    this.rows = Math.ceil(seatMap.length / 8);
-    this.cols = 8;
-    this.advancedSettings = advancedSettings;
+// Compatibility entry point for integrations; uses the same cached engine as the worker.
+SeatingModule.prototype.SeatingOptimizer = function(students,seatMap,advancedSettings,parent) {
+    this.students=students;this.initialMap=seatMap;this.parent=parent;this.advancedSettings=advancedSettings;this.context=SeatingEngine.prepare(students,seatMap,advancedSettings);
+    this.weights=Object.assign({complement:1,behavior:1,group:1,constraints:1,balance:1},advancedSettings.weights);this.config={budgetMs:advancedSettings.searchBudgetMs || 5000};
 };
-SeatingModule.prototype.SeatingOptimizer.prototype.optimizeForTarget = function(type) {
-    var baseWeights = { academic: { complement: 0.35, behavior: 0.1, group: 0.1, constraints: 0.15, balance: 0.3 }, behavior: { complement: 0.05, behavior: 0.45, group: 0.05, constraints: 0.15, balance: 0.3 }, social: { complement: 0.1, behavior: 0.1, group: 0.35, constraints: 0.15, balance: 0.3 }, overall: { complement: 0.25, behavior: 0.15, group: 0.15, constraints: 0.15, balance: 0.3 } };
-    var targetWeights = baseWeights[type] || baseWeights.overall;
-    this.weights = {};
-    var self = this;
-    Object.keys(targetWeights).forEach(function(key) { var aw = self.advancedSettings.weights[key] ?? 1.0; self.weights[key] = targetWeights[key] * aw; });
-    var totalWeight = Object.values(this.weights).reduce(function(s, w) { return s + w; }, 0);
-    if(totalWeight===0)return {solution:this.initialMap.slice(),score:0};
-    Object.keys(this.weights).forEach(function(key) { self.weights[key] = self.weights[key] / totalWeight; });
-    return this.optimize();
-};
-SeatingModule.prototype.SeatingOptimizer.prototype.optimize = function() {
-    var population = this.initializePopulation();
-    var bestSolution = null, bestScore = -Infinity, stagnantGenerations = 0;
-    var self = this;
-    for (var i = 0; i < this.config.maxIterations; i++) {
-        var evaluated = population.map(function(solution) { return { solution: solution, score: self.evaluateSolution(solution) }; });
-        evaluated.sort(function(a, b) { return b.score - a.score; });
-        if (evaluated[0].score > bestScore) { bestScore = evaluated[0].score; bestSolution = evaluated[0].solution; stagnantGenerations = 0; }
-        else { stagnantGenerations++; }
-        if (stagnantGenerations >= 15) break;
-        var progress = i / this.config.maxIterations;
-        this.config.mutationRate = progress < 0.3 ? 0.3 : progress > 0.7 ? 0.1 : 0.2;
-        var selected = this.select(evaluated);
-        var children = this.crossover(selected);
-        var mutated = this.mutate(children);
-        population = evaluated.slice(0, this.config.elitismCount).map(function(e) { return e.solution; }).concat(mutated).slice(0, this.config.populationSize);
-    }
-    return { solution: bestSolution, score: bestScore };
-};
-SeatingModule.prototype.SeatingOptimizer.prototype.initializePopulation = function() {
-    var population = [];
-    var half = Math.floor(this.config.populationSize / 2);
-    for (var i = 0; i < half; i++) population.push(this.createGreedySolution(i));
-    for (var i = half; i < this.config.populationSize; i++) population.push(this.createRandomSolution());
-    return population;
-};
-SeatingModule.prototype.SeatingOptimizer.prototype.createGreedySolution = function(variant) {
-    var self = this;
-    var solution = this.initialMap.slice();
-    var movable = this.students.filter(function(s) { return s.status !== 'empty' && s.status !== 'fixed' && this.initialMap.includes(s.name); },this);
-    var pool = movable.map(function(s) { return { name: s.name, gradient: s.gradient }; });
-    var pairs = [];
-    while (pool.length > 1) {
-        pool.sort(function(a, b) { return a.gradient - b.gradient; });
-        var bestPair = null, bestDiff = Infinity;
-        for (var i = 0; i < Math.min(pool.length, 10); i++) {
-            for (var j = i + 1; j < Math.min(pool.length, i + 10); j++) {
-                var diff = Math.abs(pool[i].gradient - pool[j].gradient);
-                var score = Math.abs(diff - 3);
-                if (score < bestDiff || (score === bestDiff && Math.random() < 0.3)) { bestDiff = score; bestPair = [i, j]; }
-            }
-        }
-        if (bestPair) { pairs.push([pool[bestPair[0]].name, pool[bestPair[1]].name]); pool.splice(bestPair[1], 1); pool.splice(bestPair[0], 1); }
-        else break;
-    }
-    if (pool.length === 1) pairs.push([pool[0].name, null]);
-    var fixedPositions = new Set();
-    this.students.filter(function(s) { return s.status === 'fixed'; }).forEach(function(s) { var idx = self.initialMap.indexOf(s.name); if (idx >= 0) fixedPositions.add(idx); }, this);
-    solution=solution.map(function(n,i){return fixedPositions.has(i) || n==='🚫' ? n : null;});
-    var emptyIndices = [];
-    solution.forEach(function(n, i) { if (!n && !fixedPositions.has(i)) emptyIndices.push(i); });
-    pairs.forEach(function(pair) {
-        if (pair[0] && solution.indexOf(pair[0]) < 0) { var ei = emptyIndices.shift(); if (ei !== undefined) solution[ei] = pair[0]; }
-        if (pair[1] && solution.indexOf(pair[1]) < 0) { var ei2 = emptyIndices.shift(); if (ei2 !== undefined) solution[ei2] = pair[1]; }
-    });
-    return solution;
-};
-SeatingModule.prototype.SeatingOptimizer.prototype.createRandomSolution = function() {
-    var solution = this.initialMap.slice();
-    var fixedMap = new Set();
-    this.students.filter(function(s) { return s.status === 'fixed'; }).forEach(function(s) { var idx = solution.indexOf(s.name); if (idx >= 0) fixedMap.add(idx); });
-    var movable = this.students.filter(function(s) { return s.status !== 'fixed' && s.status !== 'empty' && this.initialMap.includes(s.name); },this).map(function(s) { return s.name; });
-    var availableSeats = [];
-    solution.forEach(function(name, i) { if (!fixedMap.has(i) && (name === null || movable.indexOf(name) >= 0)) availableSeats.push(i); });
-    for (var i = movable.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var tmp = movable[i]; movable[i] = movable[j]; movable[j] = tmp; }
-    availableSeats.forEach(function(idx) { if (!fixedMap.has(idx)) solution[idx] = null; });
-    for (var k = 0; k < movable.length && k < availableSeats.length; k++) solution[availableSeats[k]] = movable[k];
-    return solution;
-};
-SeatingModule.prototype.SeatingOptimizer.prototype.evaluateSolution = function(solution) {
-    if(!SeatingData.validMap(solution,this.students,this.initialMap))return -Infinity;
-    var scores = { subjectComp: 0, gradientDiff: 0, behavior: 0, group: 0, constraints: 0, balance: 0 };
-    var totalStudents = solution.filter(function(n) { return n && n !== '\u{1F6AB}'; }).length;
-    if (totalStudents < 2) return 0;
-    var getCoords = function(idx) { return { row: Math.floor(idx / 8), col: idx % 8 }; };
-    var self = this;
-    var isFB = this.parent.isForbiddenPair.bind(this.parent);
-    var getCS = this.parent.getComplementScore.bind(this.parent);
-    for (var i = 0; i < solution.length; i++) {
-        var name = solution[i];
-        if (!name || name === '\u{1F6AB}') continue;
-        var student = this.studentMap.get(name);
-        if (!student) continue;
-        var coords = getCoords(i);
-        if (student.status === 'fixed' && this.initialMap[i] !== name) scores.constraints -= 500;
-        var partnerIdx = (coords.col % 2 === 0 ? coords.col + 1 : coords.col - 1);
-        if (partnerIdx >= 0 && partnerIdx <= 7) {
-            var pi = coords.row * 8 + partnerIdx;
-            if (pi >= 0 && pi < solution.length && pi > i) {
-                var pName = solution[pi];
-                if (pName && pName !== '\u{1F6AB}') {
-                    var p = this.studentMap.get(pName);
-                    if (p) {
-                        var g1 = student.gradient || 0, g2 = p.gradient || 0;
-                        var diff = Math.abs(g1 - g2);
-                        if(g1 && g2){if(isFB(g1,g2))scores.gradientDiff-=1000;else scores.gradientDiff+=getCS(diff);}
-                        if (student.tags.some(function(t) { return t === '关系不和:' + pName; })) scores.behavior -= 150;
-                        if (student.tags.some(function(t) { return t === '爱说话:' + pName; })) scores.behavior -= 80;
-                        if (p.tags.some(function(t) { return t === '关系不和:' + name; })) scores.behavior -= 150;
-                        if (p.tags.some(function(t) { return t === '爱说话:' + name; })) scores.behavior -= 80;
-                        if (student.tags.indexOf('性格开朗') >= 0 !== p.tags.indexOf('性格开朗') >= 0) scores.behavior += 50;
-                        var compCount = this.countComplementSubjects(student, p);
-                        scores.subjectComp += compCount * 210;
-                    }
-                }
-            }
-        }
-    }
-    SeatingData.groups(solution,this.advancedSettings.groupSize).forEach(function(indices) {
-        var members=indices.map(function(i){return self.studentMap.get(solution[i]);}).filter(Boolean);
-        if(members.length<3)return;
-        var allHavePartner=members.every(function(member){return members.some(function(other){return other!==member && self.countComplementSubjects(member,other)>0;});});
-        scores.group+=allHavePartner?200:0;
-    });
-    var quadrants = [0, 0, 0, 0], quadCounts = [0, 0, 0, 0];
-    for (var qi = 0; qi < solution.length; qi++) {
-        var qName = solution[qi];
-        if (!qName || qName === '\u{1F6AB}') continue;
-        var qs = this.studentMap.get(qName);
-        if (!qs || !qs.gradient) continue;
-        var qCoords = getCoords(qi);
-        var qIdx = (qCoords.col < 4 ? 0 : 1) + (qCoords.row < this.rows / 2 ? 0 : 2);
-        quadrants[qIdx] += qs.gradient;
-        quadCounts[qIdx]++;
-    }
-    var quadAvgs = quadrants.map(function(sum, i) { return quadCounts[i] > 0 ? sum / quadCounts[i] : null; }).filter(Number.isFinite);
-    if(quadAvgs.length>1) {
-        var avgGrad = quadAvgs.reduce(function(s, v) { return s + v; }, 0) / quadAvgs.length;
-        var variance = quadAvgs.reduce(function(s, v) { return s + Math.pow(v - avgGrad, 2); }, 0) / quadAvgs.length;
-        if (variance <= 0.5) scores.balance += 150;
-        else if (variance <= 1.0) scores.balance += 80;
-        else if (variance >= 2.0) scores.balance -= 150;
-        else scores.balance -= 20;
-    }
-    for (var r = 0; r < this.rows; r++) {
-        var highCount = 0, lowCount = 0;
-        for (var c = 0; c < 8; c++) {
-            var idxR = r * 8 + c, nR = solution[idxR];
-            if (!nR || nR === '\u{1F6AB}') continue;
-            var sR = this.studentMap.get(nR);
-            if (!sR || !sR.gradient) continue;
-            if (sR.gradient <= 4) lowCount++; else highCount++;
-        }
-        var rowTotal = highCount + lowCount;
-        if (rowTotal >= 4) { var ratio = Math.min(lowCount, highCount) / rowTotal; if (ratio < 0.2) scores.balance -= 120; else if (ratio < 0.33) scores.balance -= 60; }
-    }
-    var crossCount = 0, deskTotal = 0;
-    for (var di = 0; di < solution.length; di++) {
-        var pCol = di % 2 === 0 ? di % 8 + 1 : di % 8 - 1;
-        if (pCol < 0 || pCol > 7) continue;
-        var pIdx = Math.floor(di / 8) * 8 + pCol;
-        if (pIdx <= di || pIdx >= solution.length) continue;
-        var n1 = solution[di], n2 = solution[pIdx];
-        if (!n1 || n1 === '\u{1F6AB}' || !n2 || n2 === '\u{1F6AB}') continue;
-        var s1 = this.studentMap.get(n1), s2 = this.studentMap.get(n2);
-        if (!s1 || !s2 || !s1.gradient || !s2.gradient) continue;
-        deskTotal++;
-        if (Math.abs(s1.gradient - s2.gradient) >= 2) crossCount++;
-    }
-    if (deskTotal > 0) scores.balance += (crossCount / deskTotal) * 200 - 100;
-    var combinedComplement = scores.subjectComp * 0.92 + scores.gradientDiff * 0.08;
-    return combinedComplement * this.weights.complement + scores.behavior * this.weights.behavior + scores.group * this.weights.group + scores.constraints * this.weights.constraints + scores.balance * (this.weights.balance ?? 0.15);
-};
-SeatingModule.prototype.SeatingOptimizer.prototype.countComplementSubjects = function(a,b) { return SeatingData.complementDetails(a,b).length; };
-SeatingModule.prototype.SeatingOptimizer.prototype.select = function(evaluated) {
-    var total = evaluated.reduce(function(sum, ind) { return sum + Math.max(0, ind.score + 1000); }, 0);
-    if (total === 0) return evaluated.map(function(e) { return e.solution; }).slice(0, this.config.populationSize);
-    var selected = [];
-    for (var i = 0; i < this.config.populationSize; i++) {
-        var pick = Math.random() * total, current = 0;
-        for (var j = 0; j < evaluated.length; j++) {
-            current += Math.max(0, evaluated[j].score + 1000);
-            if (current > pick) { selected.push(evaluated[j].solution); break; }
-        }
-    }
-    return selected;
-};
-SeatingModule.prototype.SeatingOptimizer.prototype.crossover = function(parents) {
-    var children = [];
-    for (var i = 0; i < parents.length - 1; i += 2) {
-        var p1 = parents[i].slice(), p2 = parents[i + 1].slice();
-        var pt = Math.floor(Math.random() * p1.length);
-        children.push(this.repair(p1.slice(0, pt).concat(p2.slice(pt))), this.repair(p2.slice(0, pt).concat(p1.slice(pt))));
-    }
-    return children;
-};
-SeatingModule.prototype.SeatingOptimizer.prototype.mutate = function(solutions) {
-    var self = this;
-    return solutions.map(function(sol) {
-        if (Math.random() < self.config.mutationRate) {
-            var s = sol.slice();
-            var movableIndices = s.map(function(name, i) { return name && name !== '\u{1F6AB}' && self.studentMap.get(name)?.status !== 'fixed' ? i : -1; }).filter(function(i) { return i !== -1; });
-            if (movableIndices.length >= 2) {
-                var i1 = movableIndices[Math.floor(Math.random() * movableIndices.length)];
-                var i2 = movableIndices[Math.floor(Math.random() * movableIndices.length)];
-                var tmp = s[i1]; s[i1] = s[i2]; s[i2] = tmp;
-            }
-            return s;
-        }
-        return sol;
-    });
-};
-SeatingModule.prototype.SeatingOptimizer.prototype.repair = function(child) { return SeatingData.repairMap(child,this.students,this.initialMap); };
+SeatingModule.prototype.SeatingOptimizer.prototype.optimizeForTarget = function(type){this.mode=type;return this.optimize();};
+SeatingModule.prototype.SeatingOptimizer.prototype.optimize = function(){var result=SeatingEngine.search(this.context,{mode:this.mode || 'academic',budgetMs:this.config.budgetMs});result.score=result.metrics?.dual ?? -Infinity;return result;};
+SeatingModule.prototype.SeatingOptimizer.prototype.evaluateSolution = function(map){var indices=map.map(n=>n==='🚫'?-2:n==null?-1:this.context.names.indexOf(n));return SeatingEngine.valid(this.context,indices)?SeatingEngine.evaluate(this.context,indices).dual:-Infinity;};
+SeatingModule.prototype.SeatingOptimizer.prototype.countComplementSubjects = function(a,b){return SeatingData.complementDetails(a,b).length;};
 
 // 轮换操作
 SeatingModule.prototype.executeRotation = function() {
@@ -848,6 +664,7 @@ SeatingModule.prototype.captureState = function(reason) {
         advancedSettings:AppCore.clone(this.advancedSettings)};
 };
 SeatingModule.prototype.saveSnapshot = function(reason) {
+    this.cancelOptimization();
     var snapshot=this.captureState(reason || '手动保存');
     var signature=JSON.stringify([snapshot.className,snapshot.batchId,snapshot.batchLabel,snapshot.students,snapshot.seatMap,snapshot.showTags,snapshot.advancedSettings]);
     if(reason && signature===this.lastSavedSignature)return this.pendingSave || Promise.resolve(true);
@@ -869,6 +686,7 @@ SeatingModule.prototype.saveSnapshot = function(reason) {
     return task;
 };
 SeatingModule.prototype.setSaveStatus = function(message, failed) {
+    this.saveFeedback={message:message,failed:!!failed};
     if(seatingModuleInstance && seatingModuleInstance!==this && seatingModuleInstance.root===this.root)return;
     var el=this.root.querySelector('#sm-saveStatus');
     if(el){el.textContent=message;el.style.color=failed?'#b91c1c':'#047857';}
@@ -884,8 +702,8 @@ SeatingModule.prototype.loadSnapshot = async function(index) {
         await this.saveSnapshot('恢复前保留');
         if(seatingModuleInstance!==this || epoch!==seatingLoadEpoch)return;
         var profiles=buildSeatingProfiles(className);
-        if(!profiles.length){this.students=AppCore.clone(snap.students);this.seatMap=snap.seatMap.slice();this.advancedSettings=AppCore.clone(snap.advancedSettings || this.advancedSettings);this.showTags=snap.showTags!==false;this.render();this.initModalPools();}
-        else this.init(profiles,{className:className,saved:snap});
+        if(!profiles.length){var academic=AppCore.clone(this.advancedSettings.academic);this.students=AppCore.clone(snap.students);this.seatMap=snap.seatMap.slice();this.advancedSettings=AppCore.clone(snap.advancedSettings || this.advancedSettings);this.advancedSettings.academic=academic;this.normalizeSettings();this.showTags=snap.showTags!==false;this.render();this.initModalPools();}
+        else {snap=AppCore.clone(snap);snap.advancedSettings=snap.advancedSettings || {};snap.advancedSettings.academic=AppCore.clone(this.advancedSettings.academic);this.init(profiles,{className:className,saved:snap});}
         await this.saveSnapshot('恢复快照');
     } catch(error){this.setSaveStatus('恢复失败：'+error.message,true);}
 };
@@ -919,15 +737,15 @@ SeatingModule.prototype.exportData = function() {
         seatingData.push(rowData);
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(seatingData), '座位安排');
-    var studentHeader = ['姓名','状态','座位位置','梯度','班内综合名次','班内相对位置%','优势科目','薄弱科目','标签'];
+    var studentHeader = ['姓名','状态','座位位置','层次','本次所选口径名次','所选考试平均位置%','优势科目','薄弱科目','标签','成绩口径','总分有效考试次数'];
     var studentData = [studentHeader];
     this.students.forEach(function(student) {
         var pos = this.seatMap.indexOf(student.name);
         var seatPos = pos !== -1 ? (Math.floor(pos / 8) + 1) + '行' + ((pos % 8) + 1) + '列' : '未分配';
-        studentData.push([student.name || '', student.status || '', seatPos, this.gradientText(student.gradient), student.latestTotalRank || '?', Number.isFinite(student.compositeRank) ? student.compositeRank.toFixed(1) + '%' : '数据不足', student.leadingSubjects || '', student.weakSubjects || '', (student.tags || []).join(', ')]);
+        studentData.push([student.name || '', student.status || '', seatPos, this.gradientText(student.gradient), student.latestTotalRank || '?', Number.isFinite(student.compositeRank) ? student.compositeRank.toFixed(1) + '%' : '数据不足', student.leadingSubjects || '', student.weakSubjects || '', (student.tags || []).join(', '),student.totalSource || '',student.sampleCount || 0]);
     }, this);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(studentData), '学生详细信息');
-    var complementData = [['学生A','学生B','座位关系','距离','梯度差','梯度配对分值','互补科目（班内相对位置≤20%与≥75%）','是否禁止']];
+    var complementData = [['学生A','学生B','座位关系','距离','总分层差','是否符合总分层差','帮助科目（单科层差≥1且位置差≥10点）','同桌是否禁止','是否双向互补','总分位置差/百分点','差距是否适中']];
     for (var i = 0; i < this.seatMap.length; i++) {
         var n1 = this.seatMap[i];
         if (!n1 || n1 === '\u{1F6AB}') continue;
@@ -942,7 +760,9 @@ SeatingModule.prototype.exportData = function() {
             if (dist > 3.5) continue;
             var g1 = s1.gradient || 0, g2 = s2.gradient || 0;
             var diff = Math.abs(g1 - g2);
-            complementData.push([n1, n2, this.getSeatRelation({ row: Math.floor(i / 8), col: i % 8 }, { row: Math.floor(j / 8), col: j % 8 }), dist.toFixed(2), this.gradientText(g1) + '-' + this.gradientText(g2) + ' (差' + diff + ')', this.getComplementScore(g1 && g2 ? diff : null), SeatingData.complementDetails(s1,s2).map(function(d){return d.subject+': '+d.helper+'→'+d.recipient;}).join('；'), this.isForbiddenPair(g1, g2) ? '⚠️ 禁止' : '允许']);
+            var help=SeatingData.complementDetails(s1,s2),mutual=help.some(function(d){return d.helper===n1;})&&help.some(function(d){return d.helper===n2;}),gap=Number.isFinite(s1.compositeRank)&&Number.isFinite(s2.compositeRank)?Math.abs(s1.compositeRank-s2.compositeRank):null;
+            var conflict=(s1.tags || []).includes('关系不和:'+n2)||(s2.tags || []).includes('关系不和:'+n1);
+            complementData.push([n1,n2,this.getSeatRelation({row:Math.floor(i/8),col:i%8},{row:Math.floor(j/8),col:j%8}),dist.toFixed(2),g1&&g2?diff:'数据不足',g1&&g2&&diff<=2?'是':'否',help.map(function(d){return d.subject+': '+d.helper+'→'+d.recipient;}).join('；'),!g1||!g2||this.isForbiddenPair(g1,g2)||conflict?'不可同桌':'允许',mutual?'是':'否',gap===null?'数据不足':gap.toFixed(2),gap!==null&&gap>10+1e-8&&gap<=25+1e-8?'是':'否']);
         }
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(complementData), '学科互补分析');
@@ -984,7 +804,7 @@ SeatingModule.prototype.renderHelpGraph = function(chartEl) {
             itemStyle: { color: g >= 1 && g <= 8 ? self.GRADIENT_COLORS[g - 1] : '#94a3b8' },
             tooltip: {
                 formatter: function() {
-                    return '<b>' + s.name + '</b><br/>梯度: ' + self.gradientText(s.gradient) + '<br/>班内综合名次: ' + (s.latestTotalRank || '?') + '<br/>优势: ' + (s.leadingSubjects || '无') + '<br/>薄弱: ' + (s.weakSubjects || '无');
+                    return '<b>' + s.name + '</b><br/>梯度: ' + self.gradientText(s.gradient) + '<br/>所选考试名次: ' + (s.latestTotalRank || '?') + '<br/>优势: ' + (s.leadingSubjects || '无') + '<br/>薄弱: ' + (s.weakSubjects || '无');
                 }
             }
         };
@@ -1039,31 +859,14 @@ SeatingModule.prototype.renderHelpGraph = function(chartEl) {
     chart.resize();
 };
 SeatingModule.prototype.buildRecommendedHelpLinks = function() {
-    var self = this;
-    var candidates = [];
-    var active = this.students.filter(function(s) { return s && s.status !== 'empty'; });
-    function hasBadRelation(a, b) {
-        var tagsA = a.tags || [], tagsB = b.tags || [];
-        return tagsA.indexOf('关系不和:' + b.name) >= 0 || tagsB.indexOf('关系不和:' + a.name) >= 0 || tagsA.indexOf('爱说话:' + b.name) >= 0 || tagsB.indexOf('爱说话:' + a.name) >= 0;
-    }
-    for (var i = 0; i < active.length; i++) {
-        for (var j = i + 1; j < active.length; j++) {
-            var a = active[i], b = active[j];
-            var g1 = a.gradient || 0, g2 = b.gradient || 0;
-            if (!g1 || !g2) continue;
-            var diff = Math.abs(g1 - g2);
-            if (diff >= 5) continue;
-            if (self.isForbiddenPair(g1, g2)) continue;
-            if (hasBadRelation(a, b)) continue;
-            var subjComp = self.countHelpSubjects(a, b);
-            if (!subjComp) continue;
-            var diffScore = diff === 2 || diff === 3 ? 90 : (diff === 1 || diff === 4 ? 45 : 10);
-            var score = subjComp * 120 + diffScore;
-            var help=SeatingData.complementDetails(a,b);
-            var label=help.map(function(d){return d.subject+': '+d.helper+'→'+d.recipient;}).join('；');
-            candidates.push({ source: a.name, target: b.name, score: score, diff: diff, subjComp: subjComp, label: label, color: diff === 2 || diff === 3 ? '#16a34a' : '#2563eb' });
-        }
-    }
+    var students=this.students,context=this.getAcademicContext(),candidates=[];
+    context.pairs.forEach(function(pair) {
+        var a=students[pair.i],b=students[pair.j];
+        if(!pair.allowed || !pair.help.length || a.status==='empty' || b.status==='empty')return;
+        if((a.tags || []).includes('爱说话:'+b.name) || (b.tags || []).includes('爱说话:'+a.name))return;
+        candidates.push({source:a.name,target:b.name,score:(pair.mutual?1000:0)+(pair.moderate?100:0)+pair.help.length,
+            diff:pair.layerGap,subjComp:pair.help.length,help:pair.help,label:pair.help.map(function(d){return d.subject+': '+d.helper+'→'+d.recipient;}).join('；'),color:pair.mutual?'#16a34a':'#2563eb'});
+    });
     candidates.sort(function(a, b) { return b.score - a.score; });
     var degree = {};
     var selected = [];
@@ -1075,8 +878,8 @@ SeatingModule.prototype.buildRecommendedHelpLinks = function() {
         degree[edge.source] = da + 1;
         degree[edge.target] = db + 1;
     });
-    return selected.slice(0, Math.max(12, Math.ceil(active.length * 0.8))).flatMap(function(edge){
-        return SeatingData.complementDetails(self.getStudent(edge.source),self.getStudent(edge.target)).map(function(help){return Object.assign({},edge,{source:help.helper,target:help.recipient,label:help.subject+'帮扶'});});
+    return selected.slice(0, Math.max(12, Math.ceil(students.length * 0.8))).flatMap(function(edge){
+        return edge.help.map(function(help){return Object.assign({},edge,{source:help.helper,target:help.recipient,label:help.subject+'帮扶'});});
     });
 };
 SeatingModule.prototype.countHelpSubjects = function(s1,s2) { return SeatingData.complementDetails(s1,s2).length; };
@@ -1090,14 +893,14 @@ SeatingModule.prototype.importRecoveryData = function() {
             if(!Array.isArray(data.students)||!Array.isArray(data.seatMap))throw new Error('缺少学生和座位数组');
             if(data.className && AppCore.classKey(data.className)!==AppCore.classKey(self.className))throw new Error('复原文件属于其他班级');
             if(!SeatingData.validMap(data.seatMap,data.students,data.seatMap))throw new Error('复原文件包含重复或未知学生');
-            var profiles=buildSeatingProfiles(self.className);
+            var profiles=buildSeatingProfiles(self.className,data.advancedSettings?.academic || self.advancedSettings.academic);
             if(data.students.some(function(s){return s.className && AppCore.classKey(s.className)!==AppCore.classKey(self.className);}))throw new Error('复原文件包含其他班级学生');
             if(!data.className && profiles.length && data.students.some(function(s){return !profiles.some(function(p){return p.name===s.name;});}))throw new Error('旧复原文件的学生无法匹配当前班级');
             if(!confirm('导入这份排位？当前排位和历史快照会继续保留。'))return;
             await self.saveSnapshot('导入前保留');
             if(seatingModuleInstance!==self)return;
             if(profiles.length)self.init(profiles,{className:self.className,saved:data});
-            else {self.students=AppCore.clone(data.students);self.seatMap=data.seatMap.slice();self.advancedSettings=AppCore.clone(data.advancedSettings || self.advancedSettings);self.showTags=data.showTags!==false;self.render();self.initModalPools();}
+            else {self.students=AppCore.clone(data.students);self.seatMap=data.seatMap.slice();self.advancedSettings=AppCore.clone(data.advancedSettings || self.advancedSettings);self.normalizeSettings();self.showTags=data.showTags!==false;self.render();self.initModalPools();}
             await self.saveSnapshot('导入复原JSON');
         }catch(error){self.setSaveStatus('导入失败：'+error.message,true);}
     };input.click();
@@ -1114,6 +917,7 @@ SeatingModule.prototype.getSeatRelation = function(c1, c2) {
     return '邻近';
 };
 SeatingModule.prototype.calculateSeatingStats = function() {
+    var context=this.getAcademicContext(),metrics=SeatingEngine.evaluate(context,context.original);
     var totalSeats = this.seatMap.length || 64;
     var occupiedSeats = this.seatMap.filter(function(s) { return s && s !== '\u{1F6AB}'; }).length;
     var emptySeats = totalSeats - occupiedSeats;
@@ -1121,26 +925,18 @@ SeatingModule.prototype.calculateSeatingStats = function() {
     var specialStudents = this.students.filter(function(s) { return s.status === 'special'; }).length;
     var gradientDist = {};
     this.students.forEach(function(s) { var g = s.gradient || 0; gradientDist[g] = (gradientDist[g] || 0) + 1; });
-    var forbiddenPairs = 0;
-    for (var i = 0; i < this.seatMap.length; i++) {
-        var name = this.seatMap[i];
-        if (!name || name === '\u{1F6AB}') continue;
-        var s = this.students.find(function(x) { return x.name === name; });
-        if (!s) continue;
-        var partnerIdx = i % 2 === 0 ? i + 1 : i - 1;
-        if (partnerIdx <= i || partnerIdx >= this.seatMap.length) continue;
-        var pn = this.seatMap[partnerIdx];
-        if (!pn || pn === '\u{1F6AB}') continue;
-        var p = this.students.find(function(x) { return x.name === pn; });
-        if (p && this.isForbiddenPair(s.gradient || 0, p.gradient || 0)) forbiddenPairs++;
-    }
     var result = {
         '学生总数': { value: this.students.length, description: '系统中的学生总数' },
         '已分配座位': { value: occupiedSeats, description: '已安排座位的学生数' },
         '空余座位': { value: emptySeats, description: '未分配的座位数' },
         '固定位置学生': { value: fixedStudents, description: '位置固定的学生数' },
         '重点关注学生': { value: specialStudents, description: '重点关注的学生数' },
-        '禁止配对同桌': { value: forbiddenPairs, description: '违反配对规则的同桌对数' },
+        '禁止配对同桌': { value: metrics.violations, description: '总分层差超限、缺失总分或关系不和的同桌对数' },
+        '双向互补同桌': {value:metrics.dual,description:'双方各至少一科达到帮助阈值'},
+        '本组高分覆盖': {value:metrics.own+'/'+metrics.activeGroups,description:'本组至少一名班内总分前20%学生'},
+        '邻组补充覆盖': {value:metrics.adjacent,description:'本组缺少高分学生，由上下左右邻组补充'},
+        '适中互补同桌': {value:metrics.moderate,description:'双向互补且总分位置差>10、≤25个百分点'},
+        '双向科目均衡': {value:metrics.balance,description:'每对双方帮助科目数较小值的合计'},
         '座位利用率': { value: ((occupiedSeats / totalSeats) * 100).toFixed(1) + '%', description: '座位使用率' }
     };
     for (var g = 1; g <= 8; g++) { var count = gradientDist[g] || 0; result[this.GRADIENT_LABELS[g-1] + '人数'] = { value: count, description: this.GRADIENT_LABELS[g-1] + '梯度学生数' }; }
@@ -1262,9 +1058,12 @@ SeatingModule.prototype.closeAdvancedModal = function() {
     var modal = this.root.querySelector('#sm-advancedModal');
     if (overlay) overlay.style.display = 'none';
     if (modal) modal.classList.remove('active');
+    this.draftSettings=null;
 };
 SeatingModule.prototype.loadAdvancedSettings = function() {
     var settings=this.draftSettings || this.advancedSettings;
+    this.root.querySelector('#sm-populationInputs').innerHTML=this.buildPopulationInputs();
+    this.root.querySelector('#sm-searchBudget').value=String(settings.searchBudgetMs || 5000);
     var layoutEl = this.root.querySelector('#sm-layout-' + settings.layout);
     if (layoutEl) layoutEl.classList.add('selected');
     var gsEl = this.root.querySelector('#sm-groupSize');
@@ -1293,14 +1092,21 @@ SeatingModule.prototype.updateWeight = function(type, value) {
 SeatingModule.prototype.applyAdvancedSettings = function() {
     var settings=this.draftSettings || AppCore.clone(this.advancedSettings),sel=this.root.querySelector('#sm-groupSize');
     var size=Number(sel.value==='custom'?this.root.querySelector('#sm-customGroupSize').value:sel.value);
-    if(!Number.isInteger(size)||size<2||size>12){showAlert('请输入2–12之间的分组人数');return;}
+    if(!Number.isInteger(size)||size<2||size>12||size%2){showAlert('请输入2–12之间的偶数，分组不能拆开同桌');return;}
+    var populationError=false;settings.academic=settings.academic || {currentExam:'@current',compareExam:'',scope:'auto',populations:{}};settings.academic.populations=AppCore.clone(settings.academic.populations || {});
+    this.root.querySelectorAll('[data-sm-population-exam]').forEach(function(input){settings.academic.populations[input.dataset.smPopulationExam]={};});
+    this.root.querySelectorAll('[data-sm-population-exam]').forEach(function(input){if(input.value==='')return;var count=Number(input.value);if(!Number.isInteger(count)||count<2){populationError=true;return;}var id=input.dataset.smPopulationExam,sn=input.dataset.smPopulationSubject;settings.academic.populations[id]=settings.academic.populations[id] || {};settings.academic.populations[id][sn]=count;});
+    if(populationError){showAlert('年级有效人数必须为不小于2的整数，未知时留空');return;}
+    settings.academic.completeGrades=Object.assign({},settings.academic.completeGrades);this.root.querySelectorAll('[data-sm-grade-complete]').forEach(function(input){settings.academic.completeGrades[input.dataset.smGradeComplete]=input.checked;});
+    settings.searchBudgetMs=Number(this.root.querySelector('#sm-searchBudget').value) || 5000;
     settings.groupSize=size;settings.customGroupSize=sel.value==='custom'?size:null;
-    this.advancedSettings=AppCore.clone(settings);this.closeAdvancedModal();this.saveAndRender('应用高级设置');
+    this.advancedSettings=AppCore.clone(settings);this.closeAdvancedModal();this.academicCache=null;
+    var saved=this.captureState('应用高级设置'),profiles=buildSeatingProfiles(this.className,this.advancedSettings.academic);this.init(profiles,{className:this.className,saved:saved});this.saveAndRender('应用高级设置');
 };
 SeatingModule.prototype.applyLayoutSettings = function() { this.saveAndRender('调整布局设置'); };
 SeatingModule.prototype.generateStandardLayout = function() { this.saveAndRender('调整布局设置'); };
 SeatingModule.prototype.resetAdvancedSettings = function() {
-    this.draftSettings={layout:'default',groupSize:6,customGroupSize:null,weights:{complement:1,behavior:1,group:1,constraints:1,balance:1}};
+    this.draftSettings={layout:'default',groupSize:6,customGroupSize:null,weights:{complement:1,behavior:1,group:1,constraints:1,balance:1},academic:AppCore.clone(this.advancedSettings.academic),searchBudgetMs:5000};
     this.loadAdvancedSettings();
 };
 SeatingModule.prototype.getStudent = function(name) { return this.students.find(function(s) { return s.name === name; }); };
@@ -1318,23 +1124,15 @@ SeatingModule.prototype.renderRightSidebarStats = function() {
     var occupiedSeats = this.seatMap.filter(function(s) { return s && s !== '\u{1F6AB}'; }).length;
     var fixedCount = this.students.filter(function(s) { return s.status === 'fixed'; }).length;
     var specialCount = this.students.filter(function(s) { return s.status === 'special'; }).length;
-    var forbiddenPairs = 0;
-    for (var i = 0; i < this.seatMap.length; i++) {
-        var name = this.seatMap[i];
-        if (!name || name === '\u{1F6AB}') continue;
-        var pi = i % 2 === 0 ? i + 1 : i - 1;
-        if (pi <= i || pi >= this.seatMap.length) continue;
-        var pn = this.seatMap[pi];
-        if (!pn || pn === '\u{1F6AB}') continue;
-        var s1 = this.students.find(function(x) { return x.name === name; });
-        var s2 = this.students.find(function(x) { return x.name === pn; });
-        if (s1 && s2 && this.isForbiddenPair(s1.gradient || 0, s2.gradient || 0)) forbiddenPairs++;
-    }
     statsEl.innerHTML = '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eee;"><span>学生总数</span><span><b>' + this.students.length + '</b></span></div>' +
         '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eee;"><span>已分配座位</span><span><b>' + occupiedSeats + '</b></span></div>' +
         '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eee;"><span>固定位置</span><span><b>' + fixedCount + '</b></span></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eee;"><span>重点关注</span><span><b>' + specialCount + '</b></span></div>' +
-        '<div style="display:flex;justify-content:space-between;padding:3px 0;' + (forbiddenPairs > 0 ? 'color:#e74c3c;' : '') + '"><span>禁止配对</span><span><b>' + forbiddenPairs + '</b></span></div>';
+        '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eee;"><span>重点关注</span><span><b>' + specialCount + '</b></span></div>';
+    try {
+        var context=this.getAcademicContext(),metrics=SeatingEngine.evaluate(context,context.original);
+        statsEl.innerHTML+=[['双向互补',metrics.dual+' / '+metrics.desks+' 对'],['本组高分覆盖',metrics.own+' / '+metrics.activeGroups+' 组'],['邻组补充',metrics.adjacent+' 组'],['适中互补',metrics.moderate+' 对'],['科目均衡',metrics.balance],['硬约束违规',metrics.violations+' 对']].map(function(item){return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--seating-border);"><span>'+item[0]+'</span><b>'+item[1]+'</b></div>';}).join('');
+        var status=this.root.querySelector('#sm-searchStatus');if(status&&!this.searchJob)status.textContent='已准备 '+context.pairs.length+' 对学生的帮助方向、互补关系与总分差距。';
+    }catch(error){statsEl.innerHTML+='<p>'+escapeHtml(error.message)+'</p>';}
     var gradDist = {};
     this.students.forEach(function(s) { var g = s.gradient || 0; gradDist[g] = (gradDist[g] || 0) + 1; });
     var gradHtml = '';
@@ -1353,6 +1151,7 @@ return SeatingModule;
 async function loadSeatingClass(className, epoch) {
     epoch = epoch || ++seatingLoadEpoch;var sourceEpoch=dataEpoch;
     var profiles=buildSeatingProfiles(className), module=seatingModuleInstance;
+    if(module)module.cancelOptimization();
     if(module && module.className===className) {
         if(profiles.length){module.init(profiles,{className:className,preserve:true});await module.saveSnapshot('成绩刷新，保留排位');}
         return module;
@@ -1361,14 +1160,13 @@ async function loadSeatingClass(className, epoch) {
     try {
         var record=await seatingStore.load(className);
         if(epoch!==seatingLoadEpoch || sourceEpoch!==dataEpoch)return;
+        profiles=buildSeatingProfiles(className,record?.latest?.advancedSettings?.academic);
         if(!profiles.length && !record){document.getElementById('seating-module-root').textContent='该班级暂无成绩或已保存的座位档案';seatingModuleInstance=null;return;}
-        module=new SeatingModule(document.getElementById('seating-module-root'));module.className=className;
+        module=new SeatingModule(document.getElementById('seating-module-root'));module.className=className;module.root.inert=true;
         module.restoreSnapshots(record?.history || []);
         module.latestSnapshot=record?.latest;
         if(profiles.length)module.init(profiles,{className:className,saved:record?.latest});
-        else {module.students=AppCore.clone(record.latest.students);module.seatMap=record.latest.seatMap.slice();module.advancedSettings=AppCore.clone(record.latest.advancedSettings);module.showTags=record.latest.showTags!==false;module.render();module.renderHistory();module.initModalPools();}
-        seatingModuleInstance=module;
-        seatingStore.remember(className);
+        else {module.students=AppCore.clone(record.latest.students);module.seatMap=record.latest.seatMap.slice();module.advancedSettings=AppCore.clone(record.latest.advancedSettings || module.advancedSettings);module.normalizeSettings();module.showTags=record.latest.showTags!==false;module.render();module.renderHistory();module.initModalPools();}
         if(!record) {
             var legacy=await restoreSeatingSnapshots();
             if(epoch!==seatingLoadEpoch || sourceEpoch!==dataEpoch)return;
@@ -1376,9 +1174,13 @@ async function loadSeatingClass(className, epoch) {
             for(var old of compatible){if(epoch!==seatingLoadEpoch || sourceEpoch!==dataEpoch)return;module.init(profiles,{className:className,saved:old});await module.saveSnapshot('迁移旧快照：'+(old.label || '历史排位'));}
             if(!compatible.length)await module.saveSnapshot('初始排座');
         }
+        if(epoch!==seatingLoadEpoch || sourceEpoch!==dataEpoch)return;
+        seatingModuleInstance=module;seatingStore.remember(className);module.root.inert=false;
+        if(module.saveFeedback)module.setSaveStatus(module.saveFeedback.message,module.saveFeedback.failed);
         else module.setSaveStatus('已恢复上次排位 · '+module.historySnapshots.length+' 份快照');
         return module;
     }catch(error){if(epoch===seatingLoadEpoch)document.getElementById('seating-module-root').textContent='座位档案读取失败：'+error.message;}
+    finally{if(epoch===seatingLoadEpoch)document.getElementById('seating-module-root').inert=false;}
 }
 async function refreshSeatingTab() {
     var epoch=++seatingLoadEpoch,sel=document.getElementById('seatingClassFilter');if(!sel)return;

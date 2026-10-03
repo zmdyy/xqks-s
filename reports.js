@@ -3099,32 +3099,32 @@ function renderCorrelationReadableCharts(data, top, groups, weakGroups) {
 }
 
 function buildSeatingReadableData(className) {
-    var profiles = buildSeatingProfiles(className);
+    var saved=seatingModuleInstance?.className===className ? seatingModuleInstance : seatingStore.peek(className)?.latest;
+    var profiles = buildSeatingProfiles(className,saved?.advancedSettings?.academic);
     if (!profiles.length) return null;
-    var students = profiles.map(function(p) { return { name:p.name,rank:p.totalRank,tier:p.tier,leads:p.leads || [],weaks:p.weaks || [],biased:p.biased,subjects:p.subjects }; }).sort(function(a,b){ return (a.rank ?? Infinity)-(b.rank ?? Infinity); });
-    var saved=seatingModuleInstance?.className===className ? seatingModuleInstance : null;
-    if(!saved)saved=seatingStore.peek(className)?.latest;
+    var students = profiles.map(function(p) { return {name:p.name,rank:p.totalRank,percentile:p.totalPercentile,sampleCount:p.sampleCount,tier:p.tier,leads:p.leads || [],weaks:p.weaks || [],biased:p.biased,subjects:p.subjects}; });
     var byName=new Map(students.map(function(s){return [s.name,s];})),seatMap;
-    if(saved?.seatMap)seatMap=saved.seatMap.map(function(name){return byName.get(name) || null;});
+    if(saved?.seatMap)seatMap=saved.seatMap.map(function(name){return name==='🚫'?{blocked:true}:byName.get(name) || null;});
     else {
         seatMap=new Array(Math.max(Math.ceil(students.length/8)*8,8)).fill(null);
         students.forEach(function(s,i){var row=Math.floor(i/8),col=i%8;seatMap[row*8+(row%2===0?col:7-col)]=s;});
     }
-    var tierCounts = { '领先':0,'中上':0,'临界':0,'后进':0,'数据不足':0 };
+    var tierCounts = Object.fromEntries(['L1','L2','L3','L4','L5','L6','L7','L8','数据不足'].map(function(t){return [t,0];}));
     students.forEach(function(s){ if (tierCounts[s.tier] != null) tierCounts[s.tier]++; });
+    var metrics=null,context=null;try{var state=SeatingData.reconcile(profiles,saved || null);context=SeatingEngine.prepare(state.students,seatMap.map(function(s){return s?.blocked?'🚫':s?.name || null;}),saved?.advancedSettings || {groupSize:6});metrics=SeatingEngine.evaluate(context,context.original);}catch(_){}
     var helpLinks = [];
     var subjectCounts = {};
     for (var i = 0; i < seatMap.length; i++) {
         if (i % 2 !== 0) continue;
         var a = seatMap[i], b = seatMap[i + 1];
-        if (!a || !b) continue;
+        if (!a || !b || a.blocked || b.blocked || !context?.allowed[context.original[i]*context.n+context.original[i+1]]) continue;
         var subjects=SeatingData.complementDetails(a,b).map(function(d){return d.subject+':'+d.helper+'帮'+d.recipient;});
         if (subjects.length) {
             helpLinks.push({ a: a.name, b: b.name, subjects: subjects });
             subjects.forEach(function(x){ var sn = x.split(':')[0]; subjectCounts[sn] = (subjectCounts[sn] || 0) + 1; });
         }
     }
-    return { className: className, students: students, seatMap: seatMap, rows: Math.ceil(seatMap.length / 8), tierCounts: tierCounts, helpLinks: helpLinks, subjectCounts: subjectCounts,actualPlacement:!!saved };
+    return {scopeLabel:profiles[0].scopeLabel,examLabels:profiles[0].examLabels,metrics:metrics, className: className, students: students, seatMap: seatMap, rows: Math.ceil(seatMap.length / 8), tierCounts: tierCounts, helpLinks: helpLinks, subjectCounts: subjectCounts,actualPlacement:!!saved };
 }
 
 function renderSeatingReadableReport(className) {
@@ -3135,10 +3135,10 @@ function renderSeatingReadableReport(className) {
     if (!output || !content) return false;
     var html = [];
     html.push('<div class="comp-readable-report">');
-    html.push('<div class="cr-cover"><div><h2>座位优化图文报告</h2><p>' + (data.actualPlacement ? '采用已保存的实际排位。' : '尚无已保存排位，以下为班内综合名次蛇形分布示例。') + '学科互补按本次班内相对位置≤20%与≥75%识别，缺失成绩不计。</p></div>');
-    html.push('<div class="cr-meta"><div><b>班级：</b>' + escapeHtml(className) + '</div><div><b>人数：</b>' + data.students.length + '</div><div><b>座位：</b>' + data.rows + '行 × 8列</div><div><b>帮扶关系：</b>' + data.helpLinks.length + '组</div></div></div>');
+    html.push('<div class="cr-cover"><div><h2>座位优化图文报告</h2><p>' + (data.actualPlacement ? '采用已保存的实际排位。' : '尚无已保存排位，以下为所选考试平均位置蛇形分布示例。') + '学科帮助按单科层差≥1且位置差≥10个百分点识别；总分层差≤2，缺失成绩不计。</p></div>');
+    html.push('<div class="cr-meta"><div><b>成绩口径：</b>'+escapeHtml(data.scopeLabel)+'</div><div><b>考试：</b>'+escapeHtml(data.examLabels.join(' / '))+'</div><div><b>班级：</b>' + escapeHtml(className) + '</div><div><b>人数：</b>' + data.students.length + '</div><div><b>座位：</b>' + data.rows + '行 × 8列</div><div><b>帮扶关系：</b>' + data.helpLinks.length + '组</div></div></div>');
     html.push('<div class="sr-kpis">');
-    ['领先','中上','临界','后进','数据不足'].forEach(function(t){ html.push('<div class="sr-kpi"><div class="sr-kpi-label">' + t + '</div><div class="sr-kpi-value">' + data.tierCounts[t] + '</div></div>'); });
+    Object.keys(data.tierCounts).forEach(function(t){ html.push('<div class="sr-kpi"><div class="sr-kpi-label">' + t + '</div><div class="sr-kpi-value">' + data.tierCounts[t] + '</div></div>'); });
     html.push('</div>');
     html.push('<div class="sr-section"><h3>一、'+(data.actualPlacement?'当前座位表':'座位示例')+'</h3>' + renderSeatingReadableGrid(data) + '</div>');
     html.push('<div class="sr-section"><h3>二、分层与帮扶科目</h3><div class="sr-grid"><div id="seatingReportTierChart" class="sr-chart sr-chart-large"></div><div id="seatingReportHelpChart" class="sr-chart sr-chart-large"></div></div></div>');
@@ -3161,11 +3161,12 @@ function renderSeatingReadableReport(className) {
 }
 
 function renderSeatingReadableGrid(data) {
-    var colors = { '领先': '#d4edda', '中上': '#cce5ff', '临界': '#fff3cd', '后进': '#f8d7da' };
+    var colors = {L1:'#dbeafe',L2:'#dce4ff',L3:'#d4ecff',L4:'#e0f2fe',L5:'#fef9c3',L6:'#ffedd5',L7:'#fee2e2',L8:'#fecaca'};
     var html = '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:10px;">';
     data.seatMap.forEach(function(s, idx) {
+        if(s?.blocked){html+='<div style="min-height:58px;border:1px solid #cbd5e1;border-radius:8px;background:#e2e8f0;display:grid;place-items:center;">禁用</div>';return;}
         if (!s) { html += '<div style="min-height:58px;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;"></div>'; return; }
-        html += '<div style="min-height:58px;border:1px solid #cbd5e1;border-radius:8px;background:' + (colors[s.tier] || '#fff') + ';padding:6px;text-align:center;font-size:11px;"><div style="font-weight:800;color:#0f172a;">' + escapeHtml(s.name) + '</div><div>' + escapeHtml(s.tier) + '</div><div style="color:#64748b;">' + (s.rank && s.rank < 999 ? s.rank + '名' : '-') + '</div></div>';
+        html += '<div style="min-height:58px;border:1px solid #cbd5e1;border-radius:8px;background:' + (colors[s.tier] || '#fff') + ';padding:6px;text-align:center;font-size:11px;"><div style="font-weight:800;color:#0f172a;">' + escapeHtml(s.name) + '</div><div>' + escapeHtml(s.tier) + '</div><div style="color:#64748b;">' + (Number.isFinite(s.percentile) ? s.percentile.toFixed(1)+'% · '+s.sampleCount+'次' : '数据不足') + '</div></div>';
     });
     html += '</div><div style="text-align:center;margin-top:8px;color:#64748b;font-size:12px;">讲台</div>';
     return html;
@@ -3176,7 +3177,7 @@ function renderSeatingReadableCharts(data) {
     var tierEl = document.getElementById('seatingReportTierChart');
     if (tierEl) {
         var tierChart = AppCore.charts.init(tierEl, null, { renderer: 'svg' });
-        tierChart.setOption(getReportPieOption('学生分层结构', ['领先','中上','临界','后进','数据不足'].map(function(t){ return { name: t, value: data.tierCounts[t] }; }), [REPORT_CHART_THEME.green, REPORT_CHART_THEME.blue, REPORT_CHART_THEME.orange, REPORT_CHART_THEME.red, '#94a3b8']));
+        tierChart.setOption(getReportPieOption('学生分层结构', Object.keys(data.tierCounts).map(function(t){ return { name: t, value: data.tierCounts[t] }; }), [REPORT_CHART_THEME.green, REPORT_CHART_THEME.blue, REPORT_CHART_THEME.orange, REPORT_CHART_THEME.red, '#94a3b8']));
         tierChart.off('click');
         tierChart.on('click', function(params) {
             if (!params || !params.name) return;

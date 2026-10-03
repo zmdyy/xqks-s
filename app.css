@@ -861,3 +861,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 #dataIntake .file-list li > span:first-child { min-width:0; overflow-wrap:anywhere; }
 #dataIntake .file-list li button { flex-shrink:0; }
 @media(max-width:900px) { #dataIntake .upload-area-container { grid-template-columns:1fr; } }
+/* Seating exam selection uses the shared typeface and compact, readable controls. */
+#seating-module-root .sm-data-label { display:block; margin:8px 0; color:var(--seating-text2); font-size:12px; }
+#seating-module-root .sm-data-label select { display:block; width:100%; margin-top:4px; padding:7px; border:1px solid var(--seating-border); border-radius:6px; font:inherit; background:var(--seating-surface); color:var(--seating-text2); }
+#seating-module-root .sm-academic-note { margin:8px 0; font-size:12px; line-height:1.65; color:var(--seating-text2); overflow-wrap:anywhere; }
+#seating-module-root .sm-population-table { max-height:220px; overflow:auto; }
+#seating-module-root .sm-population-table table { width:100%; font-size:12px; border-collapse:collapse; }
+#seating-module-root .sm-population-table th,#seating-module-root .sm-population-table td { padding:6px; border:1px solid var(--seating-border); }
+#seating-module-root .sm-population-table input[type="number"] { width:100%; min-width:60px; max-width:100px; box-sizing:border-box; font:inherit; }
+#seating-module-root .sm-population-table input[type="checkbox"] { width:auto; vertical-align:middle; }

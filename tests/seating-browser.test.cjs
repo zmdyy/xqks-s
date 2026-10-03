@@ -37,7 +37,7 @@ const root=path.resolve(__dirname,'..');
         assert.equal(await page.evaluate(()=>seatingModuleInstance.getStudent('一班学生0').status),'fixed');
         assert.deepEqual(await page.evaluate(()=>seatingModuleInstance.getStudent('一班学生0').tags),['自律']);
         assert.equal(await page.evaluate(()=>seatingModuleInstance.getStudent('一班学生4').latestTotalRank),1);
-        // Applying settings leaves the seat map intact, and zero weights really disable a term.
+        // Applying settings retains placement; legacy weight values remain readable during migration.
         await page.click('#sm-btnAdvanced');await page.selectOption('#sm-groupSize','4');
         await page.evaluate(()=>{const m=seatingModuleInstance;m.updateWeight('complement',0);m.applyAdvancedSettings()});await settled(page);
         assert.deepEqual(await page.evaluate(()=>seatingModuleInstance.seatMap),arranged);
@@ -112,7 +112,7 @@ const root=path.resolve(__dirname,'..');
             const optimizer=new m.SeatingOptimizer(students,m.seatMap,m.advancedSettings,m);
             optimizer.weights={complement:1,behavior:0,group:0,constraints:0,balance:1};
             return optimizer.evaluateSolution(m.seatMap);
-        }),0,'unknown grades must not create balance or complement scores');
+        }),-Infinity,'unknown grades must not create balance or complement scores');
         assert.ok(await page.evaluate(()=>{
             const root=document.querySelector('#seating-module-root'),main=root.querySelector('.seating-main'),seats=root.querySelectorAll('.seat');
             return Array.from(seats).every(seat=>seat.getBoundingClientRect().right<=main.getBoundingClientRect().right);

@@ -8,6 +8,7 @@
     <link rel="preload" href="class-comparison.js" as="script">
     <link rel="preload" href="seating.js" as="script">
     <link rel="preload" href="seating-data.js" as="script">
+    <link rel="preload" href="seating-engine.js" as="script">
     <link rel="stylesheet" href="app.css">
     <script src="app-core.js"></script>
     <script src="echarts.min.js"></script>
@@ -1104,6 +1105,7 @@
 <script src="reports.js"></script>
 <script src="class-comparison.js"></script>
 <script src="seating-data.js"></script>
+<script src="seating-engine.js"></script>
 <script src="seating.js"></script>
 <script>
 // ============================================================
@@ -1647,10 +1649,13 @@ const SEATING_OPTIMIZATION_PROMPT = [
     '',
     '# 座位优化报告要求',
     '- 优先解释推荐座位策略的适用场景，而不是只输出座位表。',
-    '- 帮扶关系以适当梯度为原则：优先L差2或3，可接受L差1或4，不推荐L差5及以上。',
-    '- 避免L7+L8、L8+L8组合；避免关系不和、爱说话搭档。',
+    '- 成绩依据用户所选考试：总分和单科分别按有效年级名次/有效人数计算位置，两次有效记录等权平均；班内预实验不能描述成年级结果。',
+    '- L1–L8每层12.5个百分点。同桌总分层差不得超过2；单科帮助需层差至少1且位置差至少10个百分点，急迫性按1/2/3封顶。',
+    '- 按双向互补、本组高分覆盖、相邻补充、适中互补、科目均衡、急迫性、单向补充的顺序解释结果，不把次要目标抵消主要目标。',
+    '- 总分位置差>10且≤25个百分点为适中；班内总分平均位置前20%（含临界同分）为辐射学生；相邻限上下左右。',
+    '- 固定位置、禁用位置和待分配名单须保留，关系不和不得同桌；爱说话搭档是行为偏好。缺失成绩不补0。',
     '- 每条帮扶建议必须写明帮扶双方姓名、帮扶科目、安排理由和跟踪方式。',
-    '- 输出6行×8列座位表；无法坐满时用空位标注。',
+    '- 根据输入的实际行数输出8列座位表，保持空位和禁用位置；每组不拆同桌、不跨过道。只描述已有方案和统计，不宣称已证明全局最优。',
     '',
     '# 输出结构',
     '## 一、班级座位风险画像',
@@ -10351,43 +10356,7 @@ document.getElementById('comprehensiveGroupingBtn').addEventListener('click', as
 });
 
 // Seating analysis
-var SEATING_AI_PROMPT = [
-    '# 角色与任务',
-    '你是一位资深班主任兼教育数据分析师，拥有丰富的班级管理经验。请根据下方提供的学生档案数据和4种座位策略，为班级设计最优座位方案。',
-    '',
-    '# 输入数据说明',
-    '- 学生档案：每位学生的ID、姓名、总分排名、分层、领先科目、薄弱科目、偏科标记',
-    '- 4种策略：每种策略输出6行×8列座位表 + 统计评分（每列排名方差、互补同桌对数、后进隔离度）',
-    '- Zone模型：A=核心区(20座)、B=内环(14座)、C=外环(8座)、D=边角(6座)——角落只放中上稳定型',
-    '',
-    '# AI分析要求',
-    '',
-    '## 1. 策略对比',
-    '对比4种策略的统计数据（每列排名方差、互补同桌对数、后进隔离度），指出各策略优劣势和适用场景：',
-    '- 策略1「均衡分散」：适用于日常教学、小组竞赛',
-    '- 策略2「学科互补」：适用于偏科严重班级',
-    '- 策略3「4人小组」：适用于讨论课/项目制教学',
-    '- 策略4「梯度帮扶」：适用于考前冲刺/师徒制',
-    '',
-    '## 2. 推荐策略并说明理由',
-    '根据本班偏科人数、后进比例、领先层比例等特征，推荐最合适的一种策略。',
-    '',
-    '## 3. 输出最终座位表',
-    '务必用6行×8列表格输出（| 排 | 列1 | 列2 | ... | 列8 |），每格填 "姓名（帮扶标注）"：',
-    '- 帮扶标注示例："张三·帮李四英语" 或 "王五"（若无帮扶）',
-    '- 若选择策略2或4，标注帮扶关系；若选择1或3，标注小组编号',
-    '',
-    '## 4. 座位维护建议',
-    '- 轮换方案（建议每2周顺时针旋转1列）',
-    '- 特殊调整建议（纪律问题学生、视力需求等个体情况）',
-    '- 实施前与学生/家长的沟通要点',
-    '',
-    '# 输出格式',
-    '- 纯文本Markdown',
-    '- 座位表必须用6行×8列表格',
-    '- 关键结论加粗',
-    ''
-].join('\n');
+var SEATING_AI_PROMPT = SEATING_OPTIMIZATION_PROMPT;
 
 var SUBJ_AI_PROMPT = [
     '# 角色与任务',
@@ -10441,227 +10410,16 @@ var SUBJ_AI_PROMPT = [
 ].join('\n');
 
 function generateSeatingReport(className) {
-    var students = combinedStudentData.filter(function(s) {
-        return String(s.class) === className;
-    });
-    if (students.length < 4) return '# 班级人数不足，无法生成座位分析';
-
-    var anchorSN = getTotalSubjectName(allSubjectHeaders, combinedStudentData);
-    var totalPop = 100;
-    if (anchorSN) {
-        var afl = combinedStudentData.filter(function(s) { return s.subjects[anchorSN] && validateSubjectScore(s.subjects[anchorSN]); });
-        totalPop = afl.length || 100;
-    }
-
-    // Build student profiles
-    var allSubjNames = new Set();
-    students.forEach(function(s) {
-        Object.keys(s.subjects).forEach(function(sn) { if (sn !== anchorSN) allSubjNames.add(sn); });
-    });
-    var subjNames = Array.from(allSubjNames).sort();
-
-    // Compute tiers and leading/weak subjects per student
-    var profiles = [];
-    students.forEach(function(s) {
-        var ts = s.subjects[anchorSN];
-        var totalRank = ts ? (parseInt(ts.gradeRank, 10) || parseInt(ts.schoolRank, 10) || 999) : 999;
-        var totalScore = ts ? (parseFloat(ts.score) || 0) : 0;
-        var leads = [], weaks = [];
-        subjNames.forEach(function(sn) {
-            var sd = s.subjects[sn];
-            var r = sd ? (parseInt(sd.gradeRank, 10) || parseInt(sd.schoolRank, 10) || 999) : 999;
-            if (r > 0 && r <= totalPop * 0.2) leads.push(sn);
-            else if (r > totalPop * 0.75) weaks.push(sn);
-        });
-        var tier = totalRank <= totalPop * 0.2 ? '领先' : (totalRank <= totalPop * 0.6 ? '中上' : (totalRank <= totalPop * 0.75 ? '临界' : '后进'));
-        var biased = leads.length > 0 && weaks.length > 0;
-        profiles.push({
-            id: s.name, name: s.name, totalRank: totalRank, totalScore: totalScore,
-            tier: tier, leads: leads, weaks: weaks, biased: biased,
-            volatility: 0 // placeholder, can be enhanced with trend data
-        });
-    });
-
-    // Sort by total rank
-    profiles.sort(function(a, b) { return a.totalRank - b.totalRank; });
-
-    // Assign short IDs
-    profiles.forEach(function(p, i) { p.sid = 'S' + String(i + 1); });
-
-    // Fetch trend rank data (last 3 exams) for total + each subject
-    var ps = DataPool.trendParsedSheets;
-    if (!ps || !ps.total || !ps.total.rows.length) { ps = buildParsedSheetsFromAllBatches(); if (ps) DataPool.trendParsedSheets = ps; }
-    var hasTrend = ps && ps.total && ps.total.rows.length > 0;
-
-    function fillTrendRanks(name, subjId) {
-        if (!hasTrend) return [];
-        var dataset = ps.subjects ? ps.subjects[subjId] : null;
-        if (!dataset || !dataset.rows) return [];
-        var row = dataset.rows.find(function(r) { return String(r[0]) === name; });
-        if (!row) return [];
-        var ranks = row.slice(1).map(function(v) { var x = parseFloat(v); return isNaN(x) ? '-' : x; });
-        // Return last 3
-        if (ranks.length <= 3) return ranks;
-        return ranks.slice(ranks.length - 3);
-    }
-
-    function fillTotalTrendRanks(name) {
-        if (!hasTrend || !ps.total || !ps.total.rows) return [];
-        var row = ps.total.rows.find(function(r) { return String(r[0]) === name; });
-        if (!row) return [];
-        var ranks = row.slice(1).map(function(v) { var x = parseFloat(v); return isNaN(x) ? '-' : x; });
-        if (ranks.length <= 3) return ranks;
-        return ranks.slice(ranks.length - 3);
-    }
-
-    // Subject ID mapping for trend lookup
-    var trendSubjMap = { 'chinese':'语文','math':'数学','english':'英语','englishListening':'英语听说','physics':'物理','history':'历史','daofa':'道法','chemistry':'化学','biology':'生物','geography':'地理' };
-    var reverseTrendSubjMap = {};
-    Object.keys(trendSubjMap).forEach(function(k) { reverseTrendSubjMap[trendSubjMap[k]] = k; });
-
-    // Fill trend data into profiles
-    var trendExams = hasTrend ? ps.total.headers.slice(1) : [];
-    profiles.forEach(function(p) {
-        p.totalTrendRanks = fillTotalTrendRanks(p.name);
-        p.subjTrendRanks = {};
-        subjNames.forEach(function(sn) {
-            var tId = reverseTrendSubjMap[sn];
-            if (tId) p.subjTrendRanks[sn] = fillTrendRanks(p.name, tId);
-            else p.subjTrendRanks[sn] = [];
-        });
-    });
-
-    // Build report
-    var lines = [];
-    lines.push('# 座位分析报告 — ' + className);
-    lines.push('');
-
-    // Class overview
-    var tierCounts = {};
-    profiles.forEach(function(p) { tierCounts[p.tier] = (tierCounts[p.tier] || 0) + 1; });
-    var biasedCount = profiles.filter(function(p) { return p.biased; }).length;
-    lines.push('## 一、班级概况');
-    lines.push('');
-    lines.push('| 班级 | 总人数 | 领先 | 中上 | 临界 | 后进 | 偏科型 |');
-    lines.push('|------|--------|------|------|------|------|--------|');
-    lines.push('| ' + className + ' | ' + profiles.length + ' | ' + (tierCounts['领先']||0) + ' | ' + (tierCounts['中上']||0) + ' | ' + (tierCounts['临界']||0) + ' | ' + (tierCounts['后进']||0) + ' | ' + biasedCount + '人 ⚡ |');
-    lines.push('');
-
-    // Student profiles with trend ranks
-    lines.push('## 二、学生学术档案');
-    lines.push('');
-    if (hasTrend && trendExams.length) {
-        lines.push('> 排名趋势列：' + trendExams.slice(-3).join('→') + '（最近3次考试，按时间顺序）');
-        lines.push('');
-    }
-    // Header: ID, Name, TotalRank, Tier, TotalTrend, each subject rank, Leads, Weaks, Biased
-    var profHeader = ['ID', '姓名', '总分排名', '分层'];
-    if (hasTrend && trendExams.length) profHeader.push('总分趋势排名');
-    subjNames.forEach(function(sn) { profHeader.push(sn + '排名'); if (hasTrend && trendExams.length) profHeader.push(sn + '趋势'); });
-    profHeader.push('领先科目');
-    profHeader.push('薄弱科目');
-    profHeader.push('偏科');
-
-    lines.push('| ' + profHeader.join(' | ') + ' |');
-    lines.push('|' + profHeader.map(function() { return ':--:'; }).join('|') + '|');
-
-    profiles.forEach(function(p) {
-        var cells = [p.sid, p.name, String(p.totalRank), p.tier];
-        if (hasTrend && trendExams.length) {
-            cells.push(p.totalTrendRanks.join('→'));
-        }
-        subjNames.forEach(function(sn) {
-            var sd = p.hasOwnProperty('_subjData_' + sn) ? null : null;
-            // Current rank
-            var currRank = '-';
-            var ts2 = students.find(function(s) { return s.name === p.name; });
-            if (ts2) {
-                var sd2 = ts2.subjects[sn];
-                if (sd2) {
-                    var r2 = parseInt(sd2.gradeRank, 10) || parseInt(sd2.schoolRank, 10) || null;
-                    if (r2 !== null && r2 > 0) currRank = String(r2);
-                }
-            }
-            cells.push(currRank);
-            // Trend ranks
-            if (hasTrend && trendExams.length) {
-                var tr = p.subjTrendRanks[sn] || [];
-                cells.push(tr.length ? tr.join('→') : '—');
-            }
-        });
-        cells.push(p.leads.join('、') || '—');
-        cells.push(p.weaks.join('、') || '—');
-        cells.push(p.biased ? '⚡' : '');
-        lines.push('| ' + cells.join(' | ') + ' |');
-    });
-    lines.push('');
-
-    // Strategy descriptions (text only, no local computation)
-    lines.push('## 三、排座策略（供AI参考）');
-    lines.push('');
-    lines.push('### Zone 布局模型（6行×8列）');
-    lines.push('');
-    lines.push('```');
-    lines.push('        列1   列2   列3   列4   列5   列6   列7   列8');
-    lines.push('第1排    D     C     B     A     A     B     C     D');
-    lines.push('第2排    C     B     A     A     A     A     B     C');
-    lines.push('第3排    B     A     A     A     A     A     A     B');
-    lines.push('第4排    B     A     A     A     A     A     A     B');
-    lines.push('第5排    C     B     A     A     A     A     B     C');
-    lines.push('第6排    D     C     B     A     A     B     C     D');
-    lines.push('```');
-    lines.push('');
-    lines.push('| Zone | 座位数 | 位置特征 | 放置原则 |');
-    lines.push('|------|--------|---------|---------|');
-    lines.push('| A（核心区） | 20 | 讲台正对，教师高频关注 | 领先层 + 临界层中趋势上升者 |');
-    lines.push('| B（内环） | 14 | 稍偏，教师常规关注 | 中上层 + 领先层其余 |');
-    lines.push('| C（外环） | 8 | 靠墙两侧，教师走动可及 | 临界层 + 中上层稳定型 |');
-    lines.push('| D（边角） | 6 | 视野最偏 | 中上层稳定型，绝不放后进/临界 |');
-    lines.push('');
-
-    lines.push('### 策略1：总分均衡分散');
-    lines.push('- **核心理念**：各列学生总分排名均值尽量接近，组间公平，适合小组竞赛和日常教学');
-    lines.push('- **排法**：按总分排名蛇形分配到各列，每列上下排排名接近（后排不被遮挡）');
-    lines.push('- **适用场景**：日常教学、需要频繁小组合作的课堂');
-    lines.push('- **缺点**：可能忽略学科互补，部分同桌无帮扶关系');
-    lines.push('');
-
-    lines.push('### 策略2：学科互补配对');
-    lines.push('- **核心理念**：最大化同桌之间的学科互补——A生领先的科目恰好是B生薄弱的科目');
-    lines.push('- **排法**：计算两两互补得分（领先科目 ∩ 对方薄弱科目），贪心取最高分配对');
-    lines.push('- **适用场景**：偏科严重的班级，需要日常同桌互帮');
-    lines.push('- **缺点**：各列总分可能不均衡，部分列偏强/偏弱');
-    lines.push('');
-
-    lines.push('### 策略3：4人小组合作');
-    lines.push('- **核心理念**：前后左右4人一组，组内至少1名领先学生当"领头羊"，组间总分方差最小');
-    lines.push('- **排法**：相邻2列×前后2排=4人组，每组学科配置互补');
-    lines.push('- **适用场景**：讨论课、项目制学习、实验课分组');
-    lines.push('- **缺点**：固定座位灵活性较低，不适合单一讲授型课堂');
-    lines.push('');
-
-    lines.push('### 策略4：梯度帮扶链');
-    lines.push('- **核心理念**：核心区领先学生向外辐射帮扶——领先→中上→临界→后进，形成纵向帮扶链');
-    lines.push('- **排法**：A区放领先层，同一列向下依次放中上/临界/后进，每链2-3人');
-    lines.push('- **适用场景**：考前冲刺、师徒制、分层辅导');
-    lines.push('- **缺点**：领先学生负担较重，需要激励机制配合');
-    lines.push('');
-
-    lines.push('### 排座约束');
-    lines.push('- 角落（D区）绝不放后进/临界（视野盲区，易被忽视）');
-    lines.push('- 同列上下排总分排名接近（避免后排被前排遮挡产生挫败感）');
-    lines.push('- 排名波动大（可能好动）的学生优先安排在 B/C 区近讲台');
-    lines.push('- 视力需求学生优先安排在 A/B 区前列');
-    lines.push('- 每2周沿顺时针方向轮换1列，保持新鲜感和公平感');
-    lines.push('');
-
-    lines.push('---');
-    lines.push('');
-
-    return lines.join('\n');
+    var data=buildSeatingReadableData(className);if(!data)return '# 该班暂无可分析成绩';
+    var lines=['# 座位分析报告 — '+className,'','成绩口径：'+data.scopeLabel,'所选考试：'+data.examLabels.join(' / '),'','硬约束：同桌总分层差≤2；关系不和不可同桌；固定位置、禁用位置和待分配名单保持。','互补：单科层差≥1且位置差≥10个百分点，两人各至少一科帮助对方。','比较顺序：双向互补→本组高分覆盖→相邻补充→适中差距→科目均衡→急迫性。','适中差距：总分位置差>10且≤25个百分点。','','| 学生 | 总分平均位置% | 总分层次 | 有效考试次数 |','| --- | --- | --- | --- |'];
+    data.students.forEach(function(s){lines.push('| '+s.name+' | '+(Number.isFinite(s.percentile)?s.percentile.toFixed(2):'缺失')+' | '+s.tier+' | '+s.sampleCount+' |');});
+    lines.push('','## '+(data.actualPlacement?'当前排位':'位置示例'),'','| 排 | 列1 | 列2 | 列3 | 列4 | 列5 | 列6 | 列7 | 列8 |','| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+    for(var r=0;r<data.rows;r++)lines.push('| '+(r+1)+' | '+Array.from({length:8},function(_,c){return data.seatMap[r*8+c]?.blocked?'禁用':data.seatMap[r*8+c]?.name || '空位';}).join(' | ')+' |');
+    lines.push('','## 当前同桌帮助方向');data.helpLinks.forEach(function(l){lines.push('- '+l.a+' / '+l.b+'：'+l.subjects.join('；'));});
+    if(data.metrics)lines.push('','双向互补 '+data.metrics.dual+' 对；本组高分覆盖 '+data.metrics.own+'/'+data.metrics.activeGroups+' 组；相邻补充 '+data.metrics.adjacent+' 组；适中互补 '+data.metrics.moderate+' 对；科目均衡 '+data.metrics.balance+'。');
+    lines.push('','数据仅用于当前成绩规则，不宣称已达到所有目标的理论最优。');return lines.join('\n');
 }
 
-// Single-subject class analysis
 function generateSingleSubjectClassReport(classNames, subjectName, threshold, tierMode, compareBatchId) {
     if (tierMode == null) tierMode = 'rank';
     if (typeof classNames === 'string') classNames = [classNames];
