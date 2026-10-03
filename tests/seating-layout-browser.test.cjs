@@ -17,6 +17,8 @@ const root=path.resolve(__dirname,'..');
    DataPool.addBatch('布局测试',{combinedStudentData,allSubjectHeaders});await persistBatches();
   });
   await page.click('[data-tab="tab-seating"]');await page.waitForFunction(()=>seatingModuleInstance?.students.length===16);
+  assert.doesNotMatch(await page.locator('#seating-module-root').textContent(),/两次总分有效|其余按单次有效记录|年级依据不足时|已准备 \d+ 对学生/);
+  assert.equal(await page.locator('#sm-searchStatus').textContent(),'');assert.equal(await page.locator('#sm-searchStatus').isVisible(),false);
   async function settled(){await page.evaluate(async()=>{if(seatingModuleInstance.pendingSave)await seatingModuleInstance.pendingSave;await seatingStore.flush();});}
   const before=await page.evaluate(()=>{const m=seatingModuleInstance;return {map:m.seatMap.slice(),ids:m.seatIds.slice()};});
   const fixedName=before.map[0],fixedId=before.ids[0],waiting=before.map[1];
@@ -64,7 +66,33 @@ const root=path.resolve(__dirname,'..');
   assert.equal(await page.locator('.seat').count(),16);assert.deepEqual(await page.evaluate(()=>seatingModuleInstance.seatIds),before.ids);assert.ok(await page.evaluate(()=>seatingModuleInstance.historySnapshots.length)>layout.count);
   const [chooser]=await Promise.all([page.waitForEvent('filechooser'),page.click('#sm-btnImport')]);await chooser.setFiles({name:'layout.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});await page.waitForFunction(()=>seatingModuleInstance.latestSnapshot?.reason==='导入复原JSON');await settled();
   assert.deepEqual(await page.evaluate(()=>seatingModuleInstance.seatIds),backup.seatIds);assert.deepEqual(await page.evaluate(()=>seatingModuleInstance.seatMap),backup.seatMap);
+  // Explicit reload fills waiting students; a browser reload still preserves manual waiting.
+  const partial=await page.evaluate(()=>{
+   const m=seatingModuleInstance,name=m.students.find(s=>s.status!=='fixed').name;
+   const index=m.seatMap.indexOf(name);m.seatMap[index]=null;
+   const blocked=m.seatMap.findIndex((n,i)=>n===null && m.seatIds[i]!==null && i!==index);
+   m.seatMap[blocked]='🚫';m.saveAndRender('部分待分配与禁用');return {name,map:m.seatMap.slice(),ids:m.seatIds.slice(),blocked};
+  });await settled();
+  await page.reload();await page.waitForFunction(()=>!dataOperationBusy);await page.evaluate(()=>window.showAlert=()=>{});await page.click('[data-tab="tab-seating"]');await page.waitForFunction(()=>seatingModuleInstance?.students.length===16);await settled();
+  assert.equal(await page.evaluate(name=>seatingModuleInstance.seatMap.includes(name),partial.name),false);
+  await page.click('#seatingRefreshBtn');await page.waitForFunction(()=>seatingModuleInstance.students.every(s=>seatingModuleInstance.seatMap.includes(s.name)));await settled();
+  assert.deepEqual(await page.evaluate(()=>seatingModuleInstance.seatIds),partial.ids);
+  const reloaded=await page.evaluate(()=>seatingModuleInstance.seatMap);
+  partial.map.forEach((name,i)=>{if(name)assert.equal(reloaded[i],name,'reloading must not move existing students or blocked seats');});
+  assert.equal(await page.evaluate(({name,id})=>{const m=seatingModuleInstance;return m.seatIds[m.seatMap.indexOf(name)]===id;},{name:fixedName,id:fixedId}),true);
+  assert.equal(await page.evaluate(()=>seatingModuleInstance.latestSnapshot.reason),'重新加载学生，补齐空座');
+  await page.click('#sm-btnClear');await settled();assert.equal(await page.evaluate(()=>seatingModuleInstance.seatMap.filter(n=>n && n!=='🚫').length),0);
+  await page.reload();await page.waitForFunction(()=>!dataOperationBusy);await page.evaluate(()=>window.showAlert=()=>{});await page.click('[data-tab="tab-seating"]');await page.waitForFunction(()=>seatingModuleInstance?.students.length===16);await settled();
+  assert.equal(await page.evaluate(()=>seatingModuleInstance.seatMap.filter(n=>n && n!=='🚫').length),0);
+  await page.click('#sm-btnRefresh');await page.waitForFunction(()=>seatingModuleInstance.students.every(s=>seatingModuleInstance.seatMap.includes(s.name)));await settled();
+  assert.equal(await page.locator('#sm-unseatedList .student-item').count(),0);assert.deepEqual(await page.evaluate(()=>seatingModuleInstance.seatIds),partial.ids);
+  assert.equal(await page.evaluate(i=>seatingModuleInstance.seatMap[i],partial.blocked),'🚫');
+  assert.equal(await page.evaluate(()=>{const m=seatingModuleInstance;return m.seatMap.every((n,i)=>m.seatIds[i]!==null || n===null)}),true);
+  const complete=await page.evaluate(()=>seatingModuleInstance.seatMap.slice());
+  await page.reload();await page.waitForFunction(()=>!dataOperationBusy);await page.click('[data-tab="tab-seating"]');await page.waitForFunction(()=>seatingModuleInstance?.students.length===16);await settled();
+  assert.deepEqual(await page.evaluate(()=>seatingModuleInstance.seatMap),complete);
+  assert.doesNotMatch(await page.locator('#seating-module-root').textContent(),/两次总分有效|其余按单次有效记录|年级依据不足时|已准备 \d+ 对学生/);
   if(process.env.SEATING_LAYOUT_SCREENSHOT){await page.click('#sm-btnAddSeats');await page.screenshot({path:process.env.SEATING_LAYOUT_SCREENSHOT,fullPage:true});}
-  assert.deepEqual(errors,[]);console.log('PASS seating layout browser: compact subject averages, one English total, direct edge/row additions, drag/drop, stable fixed IDs, reload, rotation, worker search, reports and layout snapshot/JSON recovery');
+  assert.deepEqual(errors,[]);console.log('PASS seating layout browser: compact subject averages, one English total, direct edge/row additions, drag/drop, stable fixed IDs, rotation, worker search, reports, snapshot/JSON recovery, both explicit reload buttons filling waiting/cleared seats and hidden academic/cache notes');
  }finally{await browser.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1});

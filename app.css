@@ -886,3 +886,4 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 #seating-module-root .sm-position-table th,#seating-module-root .sm-position-table td { padding:8px 10px; border-bottom:1px solid var(--seating-border); text-align:left; }
 #seating-module-root .sm-position-table th:last-child,#seating-module-root .sm-position-table td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
 #seating-module-root .sm-position-table tbody tr:first-child { font-weight:700; background:var(--seating-surface); }
+#seating-module-root #sm-searchStatus:empty { display:none; }

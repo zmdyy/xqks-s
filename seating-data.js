@@ -207,6 +207,19 @@
         }
         return {seatMap,seatIds};
     }
+    function fillUnseated(students,map,ids) {
+        let layout={seatMap:map.slice(),seatIds:layoutIds(map,ids)};
+        const present=new Set(map.filter(Boolean)),waiting=students.filter(s=>!present.has(s.name));
+        const free=layout.seatMap.flatMap((name,i)=>name===null && layout.seatIds[i]!==null?[i]:[]);
+        // An explicit reload seats the whole roster, while keeping existing positions and holes.
+        while(free.length<waiting.length) {
+            const start=layout.seatMap.length;
+            layout=addSeats(layout.seatMap,layout.seatIds,{side:'bottom',whole:true});
+            for(let i=start;i<layout.seatMap.length;i++)free.push(i);
+        }
+        waiting.forEach((s,i)=>{layout.seatMap[free[i]]=s.name;});
+        return Object.assign(layout,{placed:waiting.length});
+    }
     function groups(map,size,seatIds) {
         const groups=[],rows=Math.ceil(map.length/8);size=Math.max(2,Math.min(12,Number(size)||4));size+=size%2;
         for(let col=0;col<8;col+=2) {
@@ -273,5 +286,5 @@
         return {save,load,snapshot,classes,flush:()=>queue,peek:cls=>getLocal(journalKey(cls))?.state || null,
             remember(cls){try{local.setItem(remembered,cls)}catch(_){}},lastClass(){try{return local.getItem(remembered)}catch(_){return null}}};
     }
-    return {numeric,positiveRank,rankInfo,layer,rankMetrics,subjectMetrics,examSources,examMetrics,buildProfiles,complementDetails,reconcile,repairMap,validMap,validSeatLayout,layoutIds,addSeats,groups,createStore};
+    return {numeric,positiveRank,rankInfo,layer,rankMetrics,subjectMetrics,examSources,examMetrics,buildProfiles,complementDetails,reconcile,repairMap,validMap,validSeatLayout,layoutIds,addSeats,fillUnseated,groups,createStore};
 });

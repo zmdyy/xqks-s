@@ -143,12 +143,9 @@ SeatingModule.prototype.buildAcademicControls = function() {
     var second='<option value="">只使用本次考试</option>'+DataPool.batches.filter(function(b){return b.id!==actual;}).map(function(b){return '<option value="'+escapeHtml(b.id)+'"'+(b.id===compare?' selected':'')+'>'+escapeHtml(b.label)+'</option>';}).join('');
     if(compare===actual)second+='<option selected value="'+escapeHtml(compare)+'">与本次相同，仅计一次</option>';
     if(compare&&!DataPool.batches.some(function(b){return b.id===compare;}))second+='<option selected value="'+escapeHtml(compare)+'">对照考试已删除，请重新选择</option>';
-    var info=this.students[0],scope=info?.scopeLabel || '成绩数据不足',two=this.students.filter(function(s){return s.sampleCount===2;}).length;
     return '<label class="sm-data-label">本次考试<select id="sm-currentExam">'+first+'</select></label>'+
         '<label class="sm-data-label">对照考试<select id="sm-compareExam">'+second+'</select></label>'+
         '<label class="sm-data-label">成绩口径<select id="sm-academicScope">'+[['auto','自动判断'],['grade','年级成绩'],['class','班内预实验']].map(function(p){return '<option value="'+p[0]+'"'+((settings.scope || 'auto')===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('')+'</select></label>'+
-        '<p class="sm-academic-note">'+escapeHtml(scope)+'；'+(compare?'两次总分有效 '+two+'人，其余按单次有效记录或缺失处理':'仅使用本次有效记录')+'。单科分别统计；缺失不补0。</p>'+
-        '<p class="sm-academic-note">年级依据不足时，自动模式统一使用班内预实验。多班数据须在高级排位确认已覆盖全年级。年级名次仅覆盖部分学生时，请在高级排位填写有效人数。</p>'+
         '<p id="sm-searchStatus" role="status" aria-live="polite" class="sm-academic-note"></p>';
 };
 SeatingModule.prototype.getAcademicContext = function() {
@@ -433,7 +430,7 @@ SeatingModule.prototype.bindEvents = function() {
 };
 
 SeatingModule.prototype.loadFromCurrentData = function() {
-    return loadSeatingClass(document.getElementById('seatingClassFilter').value);
+    return reloadSeatingStudents();
 };
 
 SeatingModule.prototype.addSeat = function(options) {
@@ -627,7 +624,7 @@ SeatingModule.prototype.runOptimization = async function(type) {
     var options={mode:type,budgetMs:this.advancedSettings.searchBudgetMs || 5000},job={};this.searchJob=job;
     var status=this.root.querySelector('#sm-searchStatus');
     function progress(info){if(self.searchJob!==job)return;var el=self.root.querySelector('#sm-searchStatus');if(el)el.textContent='正在搜索 · 已评分 '+info.evaluations.toLocaleString()+' 次 · '+(info.elapsedMs/1000).toFixed(1)+'秒';}
-    if(status)status.textContent='已缓存 '+context.pairs.length+' 对学生关系，正在搜索…';
+    if(status)status.textContent='正在搜索…';
     this.root.querySelectorAll('#sm-btnOptimize,[data-sm-mode]').forEach(function(b){b.disabled=true;});
     function fallback(){return new Promise(function(resolve){var run=new SeatingEngine.Search(context,options);job.cancel=function(){resolve(null);};function chunk(){if(self.searchJob!==job){resolve(null);return;}if(run.step(400)){progress({evaluations:run.evaluations,elapsedMs:performance.now()-run.started});setTimeout(chunk,0);}else resolve(run.result());}setTimeout(chunk,0);});}
     try {
@@ -1156,7 +1153,6 @@ SeatingModule.prototype.renderRightSidebarStats = function() {
     try {
         var context=this.getAcademicContext(),metrics=SeatingEngine.evaluate(context,context.original);
         statsEl.innerHTML+=[['双向互补',metrics.dual+' / '+metrics.desks+' 对'],['本组高分覆盖',metrics.own+' / '+metrics.activeGroups+' 组'],['邻组补充',metrics.adjacent+' 组'],['适中互补',metrics.moderate+' 对'],['科目均衡',metrics.balance],['硬约束违规',metrics.violations+' 对']].map(function(item){return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--seating-border);"><span>'+item[0]+'</span><b>'+item[1]+'</b></div>';}).join('');
-        var status=this.root.querySelector('#sm-searchStatus');if(status&&!this.searchJob)status.textContent='已准备 '+context.pairs.length+' 对学生的帮助方向、互补关系与总分差距。';
     }catch(error){statsEl.innerHTML+='<p>'+escapeHtml(error.message)+'</p>';}
     var gradDist = {};
     this.students.forEach(function(s) { var g = s.gradient || 0; gradDist[g] = (gradDist[g] || 0) + 1; });
@@ -1217,5 +1213,16 @@ async function refreshSeatingTab() {
     sel.value=classes.includes(previous)?previous:classes.includes(remembered)?remembered:(classes[0] || '');
     if(sel.value)await loadSeatingClass(sel.value,epoch);
 }
-document.getElementById('seatingRefreshBtn').addEventListener('click',function(){loadSeatingClass(document.getElementById('seatingClassFilter').value);});
+async function reloadSeatingStudents() {
+    var className=document.getElementById('seatingClassFilter').value,epoch=++seatingLoadEpoch,sourceEpoch=dataEpoch;
+    var module=await loadSeatingClass(className,epoch);
+    if(!module || module!==seatingModuleInstance || epoch!==seatingLoadEpoch || sourceEpoch!==dataEpoch)return;
+    var filled=SeatingData.fillUnseated(module.students,module.seatMap,module.seatIds);
+    if(filled.placed) {
+        module.seatMap=filled.seatMap;module.seatIds=filled.seatIds;
+        await module.saveAndRender('重新加载学生，补齐空座');
+    }
+    return module;
+}
+document.getElementById('seatingRefreshBtn').addEventListener('click',reloadSeatingStudents);
 document.getElementById('seatingClassFilter').addEventListener('change',function(){loadSeatingClass(this.value);});

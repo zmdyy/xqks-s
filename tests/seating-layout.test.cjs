@@ -14,6 +14,9 @@ const invalid=added.seatMap.slice();invalid[2]=waiting;assert.equal(D.validMap(i
 const ids=added.seatIds.slice();ids[1]=ids[0];assert.equal(D.validSeatLayout(added.seatMap,ids),false);
 const restored=D.reconcile(profiles,{...state,...added});assert.deepEqual(restored.seatMap,added.seatMap);assert.deepEqual(restored.seatIds,added.seatIds);assert.ok(!restored.seatMap.includes(waiting),'layout recovery must not pull waiting students back into seats');
 assert.equal(restored.seatIds[restored.seatMap.indexOf(fixedName)],fixedId);
+const filled=D.fillUnseated(state.students,added.seatMap,added.seatIds);assert.equal(filled.placed,1);assert.ok(filled.seatMap.includes(waiting));assert.deepEqual(filled.seatIds,added.seatIds);assert.equal(filled.seatMap[8],fixedName);assert.equal(added.seatMap.includes(waiting),false);
+filled.seatIds.forEach((id,i)=>{if(id===null)assert.equal(filled.seatMap[i],null);});
+const tight=state.seatMap.slice();tight[7]='🚫';const expanded=D.fillUnseated(state.students,tight,state.seatIds);assert.equal(expanded.placed,2);assert.equal(expanded.seatMap.length,16);assert.deepEqual(expanded.seatMap.slice(0,8),tight);assert.deepEqual(expanded.seatIds.slice(0,8),state.seatIds);assert.equal(expanded.seatMap.filter(n=>n && n!=='🚫').length,9);assert.equal(D.fillUnseated(state.students,expanded.seatMap,expanded.seatIds).placed,0);
 const newRoster=rows.concat({name:'新生',class:'01班',subjects:{总分:{score:90}}}),joined=D.reconcile(D.buildProfiles(newRoster,[],'01班','总分',[],[],{}),{...state,...added});
 assert.ok(joined.seatMap.includes('新生'));assert.ok(joined.seatIds[joined.seatMap.indexOf('新生')]);assert.ok(!joined.seatMap.includes(waiting));
 const map=added.seatMap.slice(),name=map[9];map[9]=null;map[0]=name;
