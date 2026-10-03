@@ -594,12 +594,12 @@
     }
     #tab-seating .seat-grid{
         display:grid;
-        grid-template-columns:1fr 1fr 24px 1fr 1fr 24px 1fr 1fr 24px 1fr 1fr;
+        grid-template-columns:minmax(0,1fr) minmax(0,1fr) 24px minmax(0,1fr) minmax(0,1fr) 24px minmax(0,1fr) minmax(0,1fr) 24px minmax(0,1fr) minmax(0,1fr);
         gap:4px;padding:4px;width:100%;max-width:100%;min-width:0;
     }
     #tab-seating .seat{
         background:var(--seating-surface);border:1px solid var(--seating-border);border-radius:var(--seating-radius-sm);
-        min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        min-width:0;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;
         padding:4px;position:relative;cursor:grab;transition:all .2s;
         box-shadow:0 1px 3px rgba(0,0,0,0.04);
     }

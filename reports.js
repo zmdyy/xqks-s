@@ -3101,15 +3101,16 @@ function renderCorrelationReadableCharts(data, top, groups, weakGroups) {
 function buildSeatingReadableData(className) {
     var profiles = buildSeatingProfiles(className);
     if (!profiles.length) return null;
-    var students = profiles.map(function(p) { return { name: p.name, rank: p.totalRank, tier: p.tier, leads: p.leads || [], weaks: p.weaks || [], biased: p.biased }; }).sort(function(a,b){ return a.rank - b.rank; });
-    var seatCount = Math.max(Math.ceil(students.length / 8) * 8, 8);
-    var seatMap = new Array(seatCount).fill(null);
-    students.forEach(function(s, i) {
-        var row = Math.floor(i / 8), col = i % 8;
-        var idx = row % 2 === 0 ? row * 8 + col : row * 8 + (7 - col);
-        seatMap[idx] = s;
-    });
-    var tierCounts = { '领先': 0, '中上': 0, '临界': 0, '后进': 0 };
+    var students = profiles.map(function(p) { return { name:p.name,rank:p.totalRank,tier:p.tier,leads:p.leads || [],weaks:p.weaks || [],biased:p.biased,subjects:p.subjects }; }).sort(function(a,b){ return (a.rank ?? Infinity)-(b.rank ?? Infinity); });
+    var saved=seatingModuleInstance?.className===className ? seatingModuleInstance : null;
+    if(!saved)saved=seatingStore.peek(className)?.latest;
+    var byName=new Map(students.map(function(s){return [s.name,s];})),seatMap;
+    if(saved?.seatMap)seatMap=saved.seatMap.map(function(name){return byName.get(name) || null;});
+    else {
+        seatMap=new Array(Math.max(Math.ceil(students.length/8)*8,8)).fill(null);
+        students.forEach(function(s,i){var row=Math.floor(i/8),col=i%8;seatMap[row*8+(row%2===0?col:7-col)]=s;});
+    }
+    var tierCounts = { '领先':0,'中上':0,'临界':0,'后进':0,'数据不足':0 };
     students.forEach(function(s){ if (tierCounts[s.tier] != null) tierCounts[s.tier]++; });
     var helpLinks = [];
     var subjectCounts = {};
@@ -3117,15 +3118,13 @@ function buildSeatingReadableData(className) {
         if (i % 2 !== 0) continue;
         var a = seatMap[i], b = seatMap[i + 1];
         if (!a || !b) continue;
-        var subjects = [];
-        a.leads.forEach(function(sn){ if (b.weaks.indexOf(sn) >= 0) subjects.push(sn + ':' + a.name + '帮' + b.name); });
-        b.leads.forEach(function(sn){ if (a.weaks.indexOf(sn) >= 0) subjects.push(sn + ':' + b.name + '帮' + a.name); });
+        var subjects=SeatingData.complementDetails(a,b).map(function(d){return d.subject+':'+d.helper+'帮'+d.recipient;});
         if (subjects.length) {
             helpLinks.push({ a: a.name, b: b.name, subjects: subjects });
             subjects.forEach(function(x){ var sn = x.split(':')[0]; subjectCounts[sn] = (subjectCounts[sn] || 0) + 1; });
         }
     }
-    return { className: className, students: students, seatMap: seatMap, rows: Math.ceil(seatMap.length / 8), tierCounts: tierCounts, helpLinks: helpLinks, subjectCounts: subjectCounts };
+    return { className: className, students: students, seatMap: seatMap, rows: Math.ceil(seatMap.length / 8), tierCounts: tierCounts, helpLinks: helpLinks, subjectCounts: subjectCounts,actualPlacement:!!saved };
 }
 
 function renderSeatingReadableReport(className) {
@@ -3136,12 +3135,12 @@ function renderSeatingReadableReport(className) {
     if (!output || !content) return false;
     var html = [];
     html.push('<div class="comp-readable-report">');
-    html.push('<div class="cr-cover"><div><h2>座位优化图文报告</h2><p>基于总分排名蛇形分布，并识别同桌学科互补关系。</p></div>');
+    html.push('<div class="cr-cover"><div><h2>座位优化图文报告</h2><p>' + (data.actualPlacement ? '采用已保存的实际排位。' : '尚无已保存排位，以下为班内综合名次蛇形分布示例。') + '学科互补按本次班内相对位置≤20%与≥75%识别，缺失成绩不计。</p></div>');
     html.push('<div class="cr-meta"><div><b>班级：</b>' + escapeHtml(className) + '</div><div><b>人数：</b>' + data.students.length + '</div><div><b>座位：</b>' + data.rows + '行 × 8列</div><div><b>帮扶关系：</b>' + data.helpLinks.length + '组</div></div></div>');
     html.push('<div class="sr-kpis">');
-    ['领先','中上','临界','后进'].forEach(function(t){ html.push('<div class="sr-kpi"><div class="sr-kpi-label">' + t + '</div><div class="sr-kpi-value">' + data.tierCounts[t] + '</div></div>'); });
+    ['领先','中上','临界','后进','数据不足'].forEach(function(t){ html.push('<div class="sr-kpi"><div class="sr-kpi-label">' + t + '</div><div class="sr-kpi-value">' + data.tierCounts[t] + '</div></div>'); });
     html.push('</div>');
-    html.push('<div class="sr-section"><h3>一、推荐座位表</h3>' + renderSeatingReadableGrid(data) + '</div>');
+    html.push('<div class="sr-section"><h3>一、'+(data.actualPlacement?'当前座位表':'座位示例')+'</h3>' + renderSeatingReadableGrid(data) + '</div>');
     html.push('<div class="sr-section"><h3>二、分层与帮扶科目</h3><div class="sr-grid"><div id="seatingReportTierChart" class="sr-chart sr-chart-large"></div><div id="seatingReportHelpChart" class="sr-chart sr-chart-large"></div></div></div>');
     html.push('<div class="sr-section"><h3>三、推荐同桌帮扶关系</h3><table class="sr-table"><thead><tr><th>学生A</th><th>学生B</th><th>互帮科目/方向</th></tr></thead><tbody>');
     data.helpLinks.slice(0, 20).forEach(function(l){ html.push('<tr><td>' + escapeHtml(l.a) + '</td><td>' + escapeHtml(l.b) + '</td><td>' + escapeHtml(l.subjects.join('、')) + '</td></tr>'); });
@@ -3177,7 +3176,7 @@ function renderSeatingReadableCharts(data) {
     var tierEl = document.getElementById('seatingReportTierChart');
     if (tierEl) {
         var tierChart = AppCore.charts.init(tierEl, null, { renderer: 'svg' });
-        tierChart.setOption(getReportPieOption('学生分层结构', ['领先','中上','临界','后进'].map(function(t){ return { name: t, value: data.tierCounts[t] }; }), [REPORT_CHART_THEME.green, REPORT_CHART_THEME.blue, REPORT_CHART_THEME.orange, REPORT_CHART_THEME.red]));
+        tierChart.setOption(getReportPieOption('学生分层结构', ['领先','中上','临界','后进','数据不足'].map(function(t){ return { name: t, value: data.tierCounts[t] }; }), [REPORT_CHART_THEME.green, REPORT_CHART_THEME.blue, REPORT_CHART_THEME.orange, REPORT_CHART_THEME.red, '#94a3b8']));
         tierChart.off('click');
         tierChart.on('click', function(params) {
             if (!params || !params.name) return;
@@ -3186,7 +3185,7 @@ function renderSeatingReadableCharts(data) {
             if (!matched.length) return;
             var titleText = '学生分层结构 - ' + tier + ' 共' + matched.length + '人';
             var html = matched.map(function(s, i) {
-                return (i+1) + '. ' + escapeHtml(s.name) + ' （' + s.rank + '名）';
+                return (i+1) + '. ' + escapeHtml(s.name) + ' （' + (s.rank ? s.rank+'名' : '数据不足') + '）';
             }).join('<br>');
             showStudentListModal(titleText, html);
         });
