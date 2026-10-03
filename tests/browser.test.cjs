@@ -31,32 +31,47 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         await page.route('**/reports.js',async route=>{await new Promise(r=>setTimeout(r,120));await route.continue()});
         await page.route('**/class-comparison.js',async route=>{await new Promise(r=>setTimeout(r,40));await route.continue()});
         await page.route('**/seating.js',async route=>{await new Promise(r=>setTimeout(r,80));await route.continue()});
-        await page.goto(url); await page.waitForFunction(()=>!document.getElementById('importDataBtn').disabled);
+        await page.goto(url); await page.waitForFunction(()=>!document.getElementById('mainImportBtn').disabled);
+        async function chooseFiles(button, files) {
+            const chooser = page.waitForEvent('filechooser');
+            await page.click(button); await (await chooser).setFiles(files);
+        }
+        assert.deepEqual(await page.locator('#dataIntake .upload-section h3').allTextContents(), ['总成绩表','小题得分表（可选）','试卷文档（可选）']);
+        const cards = await page.locator('#dataIntake .upload-section').evaluateAll(nodes=>nodes.map(n=>({left:n.getBoundingClientRect().left,top:n.getBoundingClientRect().top})));
+        assert.ok(cards.every(c=>c.top===cards[0].top) && cards[0].left<cards[1].left && cards[1].left<cards[2].left, 'desktop upload cards must be side by side');
         await page.evaluate(()=>{window.mergeCalls=0;window.originalMerge=combineAllStudentData;combineAllStudentData=function(...args){window.mergeCalls++;return window.originalMerge(...args)}});
         const main1=workbook('总表一.xlsx',head.concat([[' 同名 ','８０１','０','c',0,'C'],['同名','802',60,'A',100,'A'],['李四','801',55,'B',95,'B']]),merges);
         const main2=workbook('总表二.xlsx',head.concat([['王五','一班',50,'B',90,'B'],['赵六','802',30,'C',60,'C']]),merges);
-        await page.locator('#dataFileInput').setInputFiles([main1,main2]);
+        await chooseFiles('#mainImportBtn',[main1,main2]);
         await page.waitForFunction(()=>!dataOperationBusy && combinedStudentData.length===5);
         assert.equal(await page.evaluate(()=>mergeCalls),1,'multiple files must merge once');
         assert.equal(await page.evaluate(()=>combinedStudentData.find(s=>s.name==='同名' && s.class==='01班').subjects['物理'].score),0);
         assert.equal(await page.evaluate(()=>combinedStudentData.find(s=>s.name==='同名' && s.class==='01班').subjects['物理'].grade),'C');
         assert.ok(workerLoads>=2,'large spreadsheet parsing must use workers');
         const sub=workbook('小题.xlsx', [['姓名','班级','物理','物理','物理'],['','','第1题（2分）','第2题（3分）','等级'],['同名','01班',0,2,'A'],['同名','02班',2,3,'A'],['李四','01班',1,1,'B'],['王五','01班',1,2,'B'],['赵六','02班',0,0,'C']]);
-        await page.selectOption('#importDataType','sub'); await page.locator('#dataFileInput').setInputFiles(sub);
+        await chooseFiles('#subImportBtn',sub);
         await page.waitForFunction(()=>!dataOperationBusy && Object.keys(uploadedFilesData).length===3);
         assert.equal(await page.evaluate(()=>combinedStudentData.length),5,'normalized classes must merge');
         assert.equal(await page.evaluate(()=>combinedStudentData.find(s=>s.name==='同名' && s.class==='01班').subjects['物理'].grade),'C','main grades must keep priority');
         assert.ok(await page.evaluate(()=>Object.keys(combinedStudentData[0].subjects['物理'].subScores).length>=2));
-        await page.locator('#dataFileInput').setInputFiles(sub); await page.waitForFunction(()=>!dataOperationBusy);
+        await chooseFiles('#subImportBtn',sub); await page.waitForFunction(()=>!dataOperationBusy);
         assert.equal(await page.evaluate(()=>Object.keys(uploadedFilesData).length),3,'re-upload must replace');
         const bad={name:'坏表.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('')};
-        await page.locator('#dataFileInput').setInputFiles(bad);await page.waitForFunction(()=>!dataOperationBusy);
+        await chooseFiles('#subImportBtn',bad);await page.waitForFunction(()=>!dataOperationBusy);
         assert.equal(await page.evaluate(()=>combinedStudentData.length),5,'bad import must keep previous data');
         assert.match(await page.locator('#dataImportStatus').textContent(),/文件为空/);
-        await page.selectOption('#importDataType','document');
-        await page.locator('#dataFileInput').setInputFiles({name:'物理.md',mimeType:'text/markdown',buffer:Buffer.from('# 物理\n1. 示例题目\nA. 选项一\nB. 选项二')});
+        await chooseFiles('#documentImportBtn',{name:'物理.md',mimeType:'text/markdown',buffer:Buffer.from('# 物理\n1. 示例题目\nA. 选项一\nB. 选项二')});
         await page.waitForFunction(()=>!dataOperationBusy && uploadedPdfs.length===1);
         assert.equal(await page.evaluate(()=>uploadedPdfs[0].source),'md');
+        if (process.env.BROWSER_SCREENSHOT_DIR) {
+            fs.mkdirSync(process.env.BROWSER_SCREENSHOT_DIR,{recursive:true});
+            await page.locator('#dataIntake').screenshot({path:path.join(process.env.BROWSER_SCREENSHOT_DIR,'upload-desktop.png')});
+        }
+        await page.setViewportSize({width:390,height:1000});
+        const mobileCards=await page.locator('#dataIntake .upload-section').evaluateAll(nodes=>nodes.map(n=>({left:n.getBoundingClientRect().left,top:n.getBoundingClientRect().top,width:n.getBoundingClientRect().width,scroll:n.scrollWidth,client:n.clientWidth})));
+        assert.ok(mobileCards.every(c=>c.left===mobileCards[0].left && c.scroll<=c.client) && mobileCards[0].top<mobileCards[1].top && mobileCards[1].top<mobileCards[2].top,'mobile upload cards must stack without overflow');
+        if (process.env.BROWSER_SCREENSHOT_DIR) await page.locator('#dataIntake').screenshot({path:path.join(process.env.BROWSER_SCREENSHOT_DIR,'upload-mobile.png')});
+        await page.setViewportSize({width:1440,height:1000});
         // Retain binary PDFs without going through an external parser.
         await page.evaluate(()=>uploadedPdfs.push({id:'binary',fileName:'物理.pdf',status:'ready',source:'local',markdown:'1. 测试',questionIndex:[],fileData:new Uint8Array([37,80,68,70,45,49])}));
         await page.fill('#newBatchName','回归批次'); await page.click('#saveBatchBtn');
@@ -133,11 +148,11 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         // Invalid snapshot JSON must resolve to an empty list, never hang.
         await page.evaluate(async()=>{await AppCore.storage.write('seating_snapshots','{bad');if((await restoreSeatingSnapshots()).length!==0)throw new Error('损坏座位快照未安全恢复');});
         // A delayed parse cannot attach to a new batch after a programmatic switch.
-        await page.evaluate(async()=>{const original=AppCore.imports.readWorkbook;try{AppCore.imports.readWorkbook=async file=>{await new Promise(r=>setTimeout(r,80));return original(file)};const promise=handleSelectedFiles([new File(['姓名,班级,物理\n旧学生,01班,1'],'旧.csv')],'main');await new Promise(r=>setTimeout(r,20));loadBatch(null);await promise;if(combinedStudentData.length||Object.keys(uploadedFilesData).length)throw new Error('旧导入污染新批次')}finally{AppCore.imports.readWorkbook=original}});
+        await page.evaluate(async()=>{const original=AppCore.imports.readWorkbook;try{AppCore.imports.readWorkbook=async file=>{await new Promise(r=>setTimeout(r,80));return original(file)};const promise=handleSelectedFiles([new File(['姓名,班级,物理\n旧学生,01班,1'],'旧.csv')],'main');await new Promise(r=>setTimeout(r,20));if(Array.from(document.querySelectorAll('#dataIntake button')).some(b=>!b.disabled))throw new Error('导入期间仍可点击其他入口');loadBatch(null);await promise;if(combinedStudentData.length||Object.keys(uploadedFilesData).length)throw new Error('旧导入污染新批次')}finally{AppCore.imports.readWorkbook=original}});
         // Local-file / unavailable-worker fallback still uses the same result format.
         const fallback=await page.evaluate(async()=>{const original=window.Worker;try{window.Worker=class{constructor(){throw new DOMException('blocked','SecurityError')}};const file=new File(['姓名,班级,物理\n测试,01班,1'],'测试.csv');return (await AppCore.imports.readWorkbook(file)).rows.length}finally{window.Worker=original}});
         assert.equal(fallback,2);
         assert.deepEqual(errors,[],'browser uncaught exceptions');
-        console.log('PASS browser: worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
+        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
     } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -53,37 +53,39 @@
         <span style="margin-left:auto;font-size:12px;color:#888;" id="batchStatus">请先上传数据再保存批次</span>
     </div>
 
-    <div class="upload-section" id="dataIntake">
-        <h3>数据导入</h3>
-        <p class="import-hint">选择数据类型后导入文件。同一批次的总表、小题表与试卷在这里统一管理。</p>
-        <div class="import-controls">
-            <label for="importDataType">数据类型</label>
-            <select id="importDataType"><option value="main">总成绩表</option><option value="sub">小题得分表</option><option value="document">试卷 PDF / Markdown</option></select>
-            <button class="upload-btn" id="importDataBtn" type="button">选择文件并导入</button>
-            <button class="upload-btn" onclick="downloadMainTemplate()" type="button">下载成绩模板</button>
-            <input type="file" id="dataFileInput" class="file-input" accept=".xlsx,.xls,.csv" multiple>
-        </div>
-        <div id="dataImportStatus" class="import-status" role="status" aria-live="polite">支持 Excel、CSV 成绩表和 PDF、Markdown 试卷；可一次选择多个文件。</div>
-        <div class="import-grid">
-            <section><h4>总成绩表</h4>
+    <div id="dataIntake">
+        <div class="upload-area-container">
+            <section class="upload-section" aria-labelledby="mainUploadTitle">
+                <h3 id="mainUploadTitle">总成绩表</h3>
+                <div class="upload-toolbar">
+                    <button class="upload-btn" id="mainImportBtn" type="button" onclick="document.getElementById('mainFileInput').click()">选择总表文件</button>
+                    <button class="upload-btn upload-btn--template" onclick="downloadMainTemplate()" type="button">📥 下载模板</button>
+                    <span class="upload-header-option"><label for="mainHeaderRows">表头行数：</label><select id="mainHeaderRows"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select></span>
+                </div>
                 <input type="file" id="mainFileInput" class="file-input" accept=".xlsx,.xls,.csv" multiple>
-                <label for="mainHeaderRows">表头行数：</label><select id="mainHeaderRows"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select>
                 <ul class="file-list" id="mainFileList"></ul>
             </section>
-            <section><h4>小题得分表（可选）</h4>
+            <section class="upload-section sub" aria-labelledby="subUploadTitle">
+                <h3 id="subUploadTitle">小题得分表（可选）</h3>
+                <div class="upload-toolbar">
+                    <button class="upload-btn upload-btn--sub" id="subImportBtn" type="button" onclick="document.getElementById('subFileInput').click()">选择小题表文件</button>
+                    <span class="upload-header-option"><label for="subHeaderRows">表头行数：</label><select id="subHeaderRows"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select></span>
+                </div>
                 <input type="file" id="subFileInput" class="file-input" accept=".xlsx,.xls,.csv" multiple>
-                <label for="subHeaderRows">表头行数：</label><select id="subHeaderRows"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select>
                 <ul class="file-list" id="subFileList"></ul>
             </section>
-            <section><h4>试卷文档（可选）</h4>
+            <section class="upload-section pdf" aria-labelledby="documentUploadTitle">
+                <h3 id="documentUploadTitle">试卷文档（可选）</h3>
+                <button class="upload-btn upload-btn--document" id="documentImportBtn" type="button" onclick="document.getElementById('pdfFileInput').click()">选择PDF/MD试卷</button>
                 <input type="file" id="pdfFileInput" class="file-input" accept=".pdf,.md" multiple>
                 <div id="pdfStatusText" class="import-hint">未上传试卷</div><ul class="file-list" id="pdfFileList"></ul>
-                <div class="import-controls">
-                    <button class="upload-btn small" onclick="refreshAllPdfAnalyses()" type="button">刷新分析</button>
-                    <button class="upload-btn small" onclick="reparseAllPdfsMinerU()" type="button">重新解析（MinerU）</button>
+                <div class="upload-document-actions">
+                    <button class="upload-btn small upload-btn--refresh" onclick="refreshAllPdfAnalyses()" type="button">🔄 刷新分析</button>
+                    <button class="upload-btn small upload-btn--reparse" onclick="reparseAllPdfsMinerU()" type="button">🔄 重新解析（MinerU）</button>
                 </div>
             </section>
         </div>
+        <div id="dataImportStatus" class="import-status" role="status" aria-live="polite"></div>
     </div>
     <details style="margin-bottom:16px;">
         <summary style="cursor:pointer;font-weight:bold;display:flex;align-items:center;gap:6px;">
@@ -3539,7 +3541,7 @@ function downloadMainTemplate() {
 function setDataControlsBusy(busy) {
     dataOperationBusy = busy;
     document.querySelectorAll('#dataIntake button, .file-list button').forEach(function(button) { button.disabled = busy; });
-    ['importDataBtn','importDataType','dataFileInput','mainFileInput','subFileInput','pdfFileInput',
+    ['mainFileInput','subFileInput','pdfFileInput',
      'batchSelector','saveBatchBtn','deleteBatchBtn','clearCurrentBtn','mainHeaderRows','subHeaderRows'].forEach(function(id) {
         const element = document.getElementById(id);
         if (element) element.disabled = busy;
@@ -8321,11 +8323,6 @@ async function handleDocumentFiles(selected, epoch) {
     document.getElementById('dataImportStatus').textContent = '试卷导入完成，请在下方查看解析状态。';
 }
 document.getElementById('pdfFileInput').addEventListener('change', function(e) { handleSelectedFiles(e.target.files, 'document', this); });
-document.getElementById('importDataType').addEventListener('change', function() {
-    document.getElementById('dataFileInput').accept = this.value === 'document' ? '.pdf,.md' : '.xlsx,.xls,.csv';
-});
-document.getElementById('importDataBtn').addEventListener('click', function() { document.getElementById('dataFileInput').click(); });
-document.getElementById('dataFileInput').addEventListener('change', function(e) { handleSelectedFiles(e.target.files, document.getElementById('importDataType').value, this); });
 
 // Personal analysis
 document.getElementById('filterBtn').addEventListener('click', displayPersonalResults);

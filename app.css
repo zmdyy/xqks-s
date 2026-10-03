@@ -826,7 +826,7 @@
 .notebook-choice-body>p+p{margin-top:4px}
 @media (max-width:760px){.notebook-choice-grid--two{grid-template-columns:1fr}}
 
-/* Common controls and the single data intake panel. Math fonts stay with KaTeX. */
+/* Common controls and shared data intake. Math fonts stay with KaTeX. */
 body { font-size:var(--font-size); }
 button, input, select, textarea { font-family:var(--font); }
 input, select, textarea { color:var(--text-primary); }
@@ -835,15 +835,29 @@ button:disabled { cursor:wait; opacity:.6; transform:none !important; }
 .upload-btn { border-radius:var(--radius-sm); }
 .upload-btn[style*="background"] { background:var(--primary) !important; }
 .upload-btn.danger { background:var(--danger) !important; }
-.import-controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:12px 0; }
-.import-controls input, .import-controls select { min-height:var(--control-height); padding:5px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); font-size:14px; }
-.import-controls button { min-height:var(--control-height); font-size:14px; }
-.import-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
-.import-grid > section { min-width:0; border-top:1px solid var(--border); padding-top:12px; }
-.import-grid h4 { font-size:14px; color:var(--primary); margin-bottom:8px; }
-.import-status { color:var(--text-secondary); min-height:24px; font-size:14px; }
+.import-status { color:var(--text-secondary); min-height:24px; font-size:14px; margin-bottom:16px; overflow-wrap:anywhere; }
+.import-status:empty { display:none; }
 .import-hint { color:var(--text-secondary); font-size:13px; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline:2px solid var(--primary-light); outline-offset:2px; }
-@media(max-width:900px) { .import-grid { grid-template-columns:1fr; } }
 
-.import-grid select { padding:4px 8px; min-height:30px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:14px; background:var(--surface); }
+/* Three visible entry points use the same import queue and parser. */
+#dataIntake .upload-area-container { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+#dataIntake .upload-section { min-width:0; }
+#dataIntake .upload-section.sub { border-color:#d35400; }
+#dataIntake .upload-section h3 { font-size:14px; font-weight:700; }
+#dataIntake .upload-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+#dataIntake .upload-header-option { display:inline-flex; align-items:center; gap:6px; }
+#dataIntake .upload-toolbar label { white-space:nowrap; }
+#dataIntake select { padding:4px 8px; min-height:30px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:14px; background:var(--surface); }
+#dataIntake .upload-btn--template { background:#27ae60; }
+#dataIntake .upload-btn--sub { background:#f39c12; }
+#dataIntake .upload-btn--document { background:#9b59b6; }
+#dataIntake .upload-btn--refresh { background:#2ecc71; }
+#dataIntake .upload-btn--reparse { background:#0ea5e9; }
+#dataIntake .upload-btn:hover { filter:brightness(.93); }
+#dataIntake #pdfStatusText { margin-top:5px; }
+#dataIntake .upload-document-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+#dataIntake .file-list li { gap:8px; }
+#dataIntake .file-list li > span:first-child { min-width:0; overflow-wrap:anywhere; }
+#dataIntake .file-list li button { flex-shrink:0; }
+@media(max-width:900px) { #dataIntake .upload-area-container { grid-template-columns:1fr; } }
