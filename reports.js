@@ -1232,7 +1232,7 @@ function renderClassTierChart(scores, students, totalName) {
 function getClassReportTotalFullMark(totalName) {
     var fullMarks = expandSubjectFullMarks(getSubjectFullMarksFromInputs(), combinedStudentData);
     var subjectNames = getScoredSubjectNames(combinedStudentData, allSubjectHeaders);
-    // 与“各科目得分率分布热力图”共用总满分口径，英语相关字段只计100分。
+    // 与得分率热力图共用英语固定100、生物地理和物化合并列不计的总满分规则。
     var totalFullMark = calculateTotalExamFullMark(subjectNames, fullMarks, totalName);
     if (totalFullMark <= 0) return null;
     var totalScores = (combinedStudentData || []).map(function(student) {
