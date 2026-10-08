@@ -1230,31 +1230,10 @@ function renderClassTierChart(scores, students, totalName) {
 }
 
 function getClassReportTotalFullMark(totalName) {
-    var configured = getSubjectFullMarksFromInputs();
-    var fullMarks = expandSubjectFullMarks(configured, combinedStudentData);
-    var subjectNames = getScoredSubjectNames(combinedStudentData, allSubjectHeaders)
-        .filter(function(name) { return name !== totalName; })
-        .map(function(name) { return String(name || '').replace(/\s/g, ''); });
-    var englishCombinedNames = ['英语合并', '英语总分', '英语合', '英语/听说'];
-    var hasEnglishCombined = subjectNames.some(function(name) { return englishCombinedNames.indexOf(name) >= 0; });
-    var hasEnglishWritten = subjectNames.some(function(name) { return name === '英语' || name === '英语笔试'; });
-    var hasEnglishListening = subjectNames.some(function(name) { return /听说|听力/.test(name); });
-    var totalFullMark = 0;
-    subjectNames.forEach(function(name) {
-        if (englishCombinedNames.indexOf(name) >= 0 || name === '英语' || name === '英语笔试' || /英语.*听说|英语.*听力|^听说$|^听力$/.test(name)) return;
-        var fullMark = parseFloat(fullMarks[name]);
-        if (!isNaN(fullMark) && fullMark > 0) totalFullMark += fullMark;
-    });
-    if (hasEnglishCombined) {
-        var combinedMark = (parseFloat(configured['英语笔试']) || 0) + (parseFloat(configured['听说']) || 0);
-        if (combinedMark > 0) totalFullMark += combinedMark;
-    } else if (hasEnglishWritten) {
-        var englishMark = subjectNames.indexOf('英语') >= 0 ? resolveAmbiguousEnglishFullMark(combinedStudentData) : (parseFloat(configured['英语笔试']) || 0);
-        if (englishMark > 0) totalFullMark += englishMark;
-        if (hasEnglishListening && englishMark < 100) totalFullMark += parseFloat(configured['听说']) || 0;
-    } else if (hasEnglishListening) {
-        totalFullMark += parseFloat(configured['听说']) || 0;
-    }
+    var fullMarks = expandSubjectFullMarks(getSubjectFullMarksFromInputs(), combinedStudentData);
+    var subjectNames = getScoredSubjectNames(combinedStudentData, allSubjectHeaders);
+    // 与“各科目得分率分布热力图”共用总满分口径，英语相关字段只计100分。
+    var totalFullMark = calculateTotalExamFullMark(subjectNames, fullMarks, totalName);
     if (totalFullMark <= 0) return null;
     var totalScores = (combinedStudentData || []).map(function(student) {
         var data = student && student.subjects ? student.subjects[totalName] : null;
