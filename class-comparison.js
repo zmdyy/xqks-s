@@ -337,13 +337,9 @@ function renderClassDiffHeatmap(stats, classNames, displaySubjects) {
     // Get full marks for score rate calculation
     var fullMarks = expandSubjectFullMarks(getSubjectFullMarksFromInputs());
     var totalName = getTotalSubjectName(allSubjectHeaders, combinedStudentData);
-    var totalFullMark = 0;
-    displaySubjects.forEach(function(sn) {
-        if (sn === totalName) return;
-        var fm = fullMarks[sn];
-        if (sn === '英语' && fm == null) fm = (fullMarks['英语笔试']||0) + (fullMarks['听说']||0);
-        if (fm != null) totalFullMark += fm;
-    });
+    // 总分满分按英语整科固定100分，不重复累加笔试、听说或合并字段。
+    // 单科得分率仍按各自 fullMarks 计算，不修改学生总分。
+    var totalFullMark = calculateTotalExamFullMark(displaySubjects, fullMarks, totalName);
     if (totalName && totalFullMark > 0) fullMarks[totalName] = totalFullMark;
     var heatSubjects = displaySubjects.filter(function(sn) {
         if (sn === totalName) return totalFullMark > 0;
