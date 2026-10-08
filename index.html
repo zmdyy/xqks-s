@@ -4059,22 +4059,26 @@ function expandSubjectFullMarks(base, studentData) {
 }
 
 
-// 总分满分口径：同一英语科目的多个成绩字段（英语/笔试/听说/合并等）只占100分。
-// 注意只计算“总满分”分母；学生实际得分及各单科满分不在这里修改。
+// 总分满分口径：英语字段合计100分；默认排除生物、地理、物理与化学合并列。
+// 只影响总满分分母；单科得分率及学生成绩不变。
 function isEnglishTotalScoreComponent(subjectName) {
     var name = String(subjectName || '').replace(/\s/g, '');
     return /^英语/.test(name) || /^(听说|听力|口语)$/.test(name);
 }
+function isExcludedFromTotalExamFullMark(subjectName) {
+    var name = String(subjectName || '').replace(/\s/g, '');
+    return name === '生物' || name === '地理'
+        || /^(物理和化学|物理化学|物理[+＋&＆]化学|物化|理化|物化合并|理化合并)$/.test(name);
+}
 function calculateTotalExamFullMark(subjectNames, fullMarks, totalName) {
-    var total = 0, hasEnglish = false;
+    var total = 0, hasEnglish = false, counted = new Set();
     (subjectNames || []).forEach(function(sn) {
-        if (!sn || sn === totalName) return;
-        if (isEnglishTotalScoreComponent(sn)) {
-            hasEnglish = true;
-            return;
-        }
-        var value = Number(fullMarks && fullMarks[sn]);
-        if (Number.isFinite(value) && value > 0) total += value;
+        if (!sn || sn === totalName || isExcludedFromTotalExamFullMark(sn)) return;
+        if (isEnglishTotalScoreComponent(sn)) { hasEnglish = true; return; }
+        if (counted.has(sn)) return;
+        counted.add(sn);
+        var fullMark = Number(fullMarks && fullMarks[sn]);
+        if (Number.isFinite(fullMark) && fullMark > 0) total += fullMark;
     });
     if (hasEnglish) total += 100;
     return total;
