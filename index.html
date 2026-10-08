@@ -4058,6 +4058,28 @@ function expandSubjectFullMarks(base, studentData) {
     return out;
 }
 
+
+// 总分满分口径：同一英语科目的多个成绩字段（英语/笔试/听说/合并等）只占100分。
+// 注意只计算“总满分”分母；学生实际得分及各单科满分不在这里修改。
+function isEnglishTotalScoreComponent(subjectName) {
+    var name = String(subjectName || '').replace(/\s/g, '');
+    return /^英语/.test(name) || /^(听说|听力|口语)$/.test(name);
+}
+function calculateTotalExamFullMark(subjectNames, fullMarks, totalName) {
+    var total = 0, hasEnglish = false;
+    (subjectNames || []).forEach(function(sn) {
+        if (!sn || sn === totalName) return;
+        if (isEnglishTotalScoreComponent(sn)) {
+            hasEnglish = true;
+            return;
+        }
+        var value = Number(fullMarks && fullMarks[sn]);
+        if (Number.isFinite(value) && value > 0) total += value;
+    });
+    if (hasEnglish) total += 100;
+    return total;
+}
+
 // ============================================================
 //  PERSONAL ANALYSIS TAB (V44 core)
 // ============================================================
