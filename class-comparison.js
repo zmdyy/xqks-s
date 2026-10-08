@@ -337,7 +337,7 @@ function renderClassDiffHeatmap(stats, classNames, displaySubjects) {
     // Get full marks for score rate calculation
     var fullMarks = expandSubjectFullMarks(getSubjectFullMarksFromInputs());
     var totalName = getTotalSubjectName(allSubjectHeaders, combinedStudentData);
-    // 总分满分按英语整科固定100分，不重复累加笔试、听说或合并字段。
+    // 总分满分：英语固定100，生物、地理及物化合并列不计。
     // 单科得分率仍按各自 fullMarks 计算，不修改学生总分。
     var totalFullMark = calculateTotalExamFullMark(displaySubjects, fullMarks, totalName);
     if (totalName && totalFullMark > 0) fullMarks[totalName] = totalFullMark;
