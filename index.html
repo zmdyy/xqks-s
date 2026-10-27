@@ -3690,7 +3690,7 @@ function findTextByItemFallback(lines, item) {
 // ============================================================
 function repairImportedBatchData() {
     var files=Object.values(uploadedFilesData || {});
-    var outdated=files.some(function(file){return Array.isArray(file.rawData) && file.rawData.length && file.parseVersion!==3;});
+    var outdated=files.some(function(file){return Array.isArray(file.rawData) && file.rawData.length && file.parseVersion!==4;});
     if (!outdated) return false;
     files.forEach(function(file) {
         if (!Array.isArray(file.rawData) || !file.rawData.length) return;
@@ -3938,7 +3938,7 @@ function parseDataByHeaderRows(fileEntry, rawData, overrideHeaderRows) {
     const shr = resolveHeaderRowCount(rawData, overrideHeaderRows);
     const hrArr = getImportedHeaderRows(fileEntry, rawData, shr);
     fileEntry.headerRows = shr;
-    fileEntry.parseVersion = 3;
+    fileEntry.parseVersion = 4;
     let ni = -1, ci = -1, ii = -1, cti = -1, sti = -1;
     const NK = ['姓名','名字','人名'], CK = ['班级','行政班','班名','行政班级'];
     const IK = ['序号','学号','考生号','准考证','编号','考号'];
@@ -4101,9 +4101,24 @@ function detectImportedDataStartRow(data) {
 function resolveHeaderRowCount(rawData, override) { let c = parseInt(override, 10); if (isNaN(c)) c = 1; return Math.max(1, Math.min(c, rawData.length || 1, 3)); }
 function getImportedHeaderRows(fileEntry, rawData, count) {
     var rows = rawData.slice(0,count).map(function(row){ return (row || []).map(function(value) { return typeof value === 'string' ? AppCore.text(value) : value; }); });
+    // Whole-sheet report titles are not subject headers. Keep row indexes unchanged.
+    var identityRow = rows.findIndex(function(row) {
+        return row.some(function(v){return /^(姓名|名字|人名)$/.test(String(v || '').trim());}) &&
+            row.some(function(v){return /^(班级|行政班|行政班级|班名)$/.test(String(v || '').trim());});
+    });
+    var width = rawData.reduce(function(max,row){return Math.max(max,(row || []).length);},0);
+    var titleRows = new Set();
+    (fileEntry.headerMerges || []).forEach(function(merge) {
+        if (merge && merge.s && merge.e && merge.s.r < identityRow && merge.s.c === 0 && merge.e.c >= width - 1) {
+            var value = String((rows[merge.s.r] || [])[0] || '').trim();
+            if (value && !/^(语文|数学|物理|化学|生物|历史|地理|英语|英语笔试|听说|道法|道德与法治|科学)$/.test(value)) {
+                titleRows.add(merge.s.r); rows[merge.s.r] = [];
+            }
+        }
+    });
     // 保留原始表格；只在解析副本中恢复 Excel 合并表头。
     (fileEntry.headerMerges || []).forEach(function(merge) {
-        if (!merge || !merge.s || !merge.e || merge.s.r >= count) return;
+        if (!merge || !merge.s || !merge.e || merge.s.r >= count || titleRows.has(merge.s.r)) return;
         var value = rows[merge.s.r] && rows[merge.s.r][merge.s.c];
         if (!hasMeaningfulValue(value)) return;
         // 仅恢复横向范围，纵向合并不能把父题号复制成一个虚假的子题号。
