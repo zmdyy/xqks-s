@@ -76,8 +76,17 @@
     document.body.appendChild(root);
     const $=s=>root.querySelector(s), msg=t=>{const box=$('[data-message]');box.textContent=t;box.hidden=!/失败|尚未完成|重叠提醒|未识别到|无效区域|没有可对应/.test(t);$('[data-parser]').title=t;};
     const option=(label,value)=>{const o=document.createElement('option');o.textContent=label;o.value=value;return o;};
-    subjects.forEach(n=>{const o=option(n,n);$('[data-subject]').add(o);});pdfs.forEach(p=>$('[data-pdf]').add(option(p.fileName,p.id)));$('[data-subject]').value=subjects.find(n=>pdfs.some(p=>p.detectedSubject===n))||subjects[0];$('[data-pdf]').value=(pdfs.find(p=>p.detectedSubject===$('[data-subject]').value)||pdfs[0]).id;
-    const prior=Object.entries(batch.paperReviewStates||{}).sort((a,b)=>String(b[1].updatedAt||'').localeCompare(String(a[1].updatedAt||''))).map(([k])=>{try{return JSON.parse(k);}catch(e){return [];}}).find(([s,id])=>subjects.includes(s)&&pdfs.some(p=>p.id===id));
+    function subjectForPdf(entry){
+      if(!entry)return null;
+      const detected=String(entry.detectedSubject||'').trim();
+      const name=(detected&&detected!=='未识别'?detected:null)||(typeof detectSubjectByFileName==='function'?detectSubjectByFileName(entry.fileName):null);
+      if(!name)return null;if(subjects.includes(name))return name;
+      const matches=subjects.filter(n=>typeof pdfSubjectMatches==='function'&&pdfSubjectMatches(name,n));
+      return matches.length===1?matches[0]:name;
+    }
+
+    subjects.forEach(n=>{const o=option(n,n);$('[data-subject]').add(o);});pdfs.forEach(p=>$('[data-pdf]').add(option(p.fileName,p.id)));$('[data-subject]').value=subjects.find(n=>pdfs.some(p=>subjectForPdf(p)===n))||subjects[0];$('[data-pdf]').value=(pdfs.find(p=>subjectForPdf(p)===$('[data-subject]').value)||pdfs[0]).id;
+    const prior=Object.entries(batch.paperReviewStates||{}).sort((a,b)=>String(b[1].updatedAt||'').localeCompare(String(a[1].updatedAt||''))).map(([k])=>{try{return JSON.parse(k);}catch(e){return [];}}).find(([s,id])=>subjects.includes(s)&&pdfs.some(p=>p.id===id&&(!subjectForPdf(p)||subjectForPdf(p)===s)));
     if(prior){$('[data-subject]').value=prior[0];$('[data-pdf]').value=prior[1];}
     [[subjects,'[data-subject]'],[pdfs,'[data-pdf]']].forEach(([items,selector])=>{if(items.length===1){const input=$(selector),label=document.createElement('span');label.textContent=input.options[0].textContent;label.title=label.textContent;label.className='paper-single-choice';input.hidden=true;input.after(label);}});
     let doc=null,pdf=null,subject='',questions=[],records={},selected='',pageNo=1,active=-1,drag=null,undo=[],redo=[],baseline='',busy=false,closed=false,renderTask=null,renderVersion=0,previewVersion=0;
@@ -175,7 +184,7 @@
     async function generate(){if(!doc||busy)return;busy=true;try{let normalized=E.normalize(pdf.mineruLayout),analysis;if(normalized.blocks.length){analysis=E.candidates(normalized.blocks,questions,'MinerU 版面');}else{const bs=[];for(let n=1;n<=doc.numPages;n++){const p=await doc.getPage(n),v=p.getViewport({scale:1}),tc=await p.getTextContent();(tc.items||[]).forEach(it=>{if(!String(it.str||'').trim())return;const [x,y]=v.convertToViewportPoint(it.transform[4],it.transform[5]);const h=Math.abs(it.height||it.transform[3]||10);bs.push({page:n,x:Math.max(0,x/v.width),y:Math.max(0,(y-h)/v.height),w:Math.max(.001,Math.min(1-x/v.width,(it.width||10)/v.width)),h:h/v.height,text:it.str,type:'text'});});}analysis=E.candidates(E.groupNativeBlocks(bs),questions,'PDF 文字层');}
         $('[data-parser]').textContent=normalized.blocks.length?'MinerU 解析':'本地轻量解析';const count=Object.keys(analysis.records).length;let added=0;const additions=Object.entries(analysis.records).filter(([major])=>!records[major]?.regions?.length);if(additions.length)checkpoint();Object.entries(analysis.records).forEach(([major,r])=>{if(!records[major]?.regions?.length){records[major]=r;added++;}});msg('自动识别 '+count+' 题，补入 '+added+' 题；已有区域均保留。'+(normalized.blocks.length?'已使用 MinerU 坐标。':normalized.warnings.join('；')+' 已尝试文字层。')+(analysis.warnings||[]).join('；')+(!count&&!normalized.blocks.length?' 未识别到可用题号；扫描件可使用 MinerU API，或在当前页面人工补框。':''));paint();
       }catch(e){msg('生成候选失败：'+e.message);}finally{busy=false;if(dirty())scheduleSave();}}
-    async function load(){if(busy){if(pdf){$('[data-pdf]').value=pdf.id;$('[data-subject]').value=subject;}return;}if(doc&&!(await flush())){$('[data-pdf]').value=pdf.id;$('[data-subject]').value=subject;return;}busy=true;try{const next=pdfs.find(p=>p.id===$('[data-pdf]').value),sub=$('[data-subject]').value,qs=listQuestions(batch,sub);if(!qs.length)throw Error('没有可对应的题号');const nextDoc=await pdfjsLib.getDocument({data:notebookPdfBytes(next).slice(),disableWorker:true}).promise;doc=nextDoc;pdf=next;subject=sub;questions=qs;records={};questions.forEach(q=>{const r=batch.notebookCropReviews?.[key(subject,q.major)];if(r&&r.fileId===pdf.id&&r.fileName===pdf.fileName){if(mappingValid(r,q.major)){records[q.major]=E.copy(r);}else{records[q.major]={regions:[],confirmed:false,source:'旧映射已失效',warnings:['旧结果的分数列与当前题号不一致，已停止复用旧框，请重新定位']};}}});undo=[];redo=[];baseline=state();selected=questions[0].major;active=-1;pageNo=1;setAddMode(false);saveStatus('修改已保存');pageCache.clear();pagePending.clear();await mountPages();$('[data-target]').innerHTML='';questions.forEach(q=>$('[data-target]').add(option('第'+q.major+'题',q.major)));await render();msg('已打开 '+batch.label+' · '+subject+'，共有 '+questions.length+' 道大题。');}catch(e){msg('打开失败：'+e.message);}finally{busy=false;}if(doc)await generate();}
+    async function load(){const desiredPdf=$('[data-pdf]').value,desiredSubject=$('[data-subject]').value;if(busy){if(pdf){$('[data-pdf]').value=pdf.id;$('[data-subject]').value=subject;}return;}if(doc&&!(await flush())){$('[data-pdf]').value=pdf.id;$('[data-subject]').value=subject;return;}busy=true;try{const next=pdfs.find(p=>p.id===desiredPdf),sub=desiredSubject,qs=listQuestions(batch,sub);if(!next)throw Error('找不到当前原卷');if(!qs.length)throw Error('没有可对应的题号');const nextDoc=await pdfjsLib.getDocument({data:notebookPdfBytes(next).slice(),disableWorker:true}).promise;doc=nextDoc;pdf=next;subject=sub;questions=qs;$('[data-pdf]').value=pdf.id;$('[data-subject]').value=subject;$('[data-filter]').value='all';root.dataset.reviewSubject=subject;root.dataset.pdfId=pdf.id;records={};questions.forEach(q=>{const r=batch.notebookCropReviews?.[key(subject,q.major)];if(r&&r.fileId===pdf.id&&r.fileName===pdf.fileName){if(mappingValid(r,q.major)){records[q.major]=E.copy(r);}else{records[q.major]={regions:[],confirmed:false,source:'旧映射已失效',warnings:['旧结果的分数列与当前题号不一致，已停止复用旧框，请重新定位']};}}});undo=[];redo=[];baseline=state();selected=questions[0].major;active=-1;pageNo=1;setAddMode(false);saveStatus('修改已保存');pageCache.clear();pagePending.clear();await mountPages();$('[data-target]').innerHTML='';questions.forEach(q=>$('[data-target]').add(option('第'+q.major+'题',q.major)));await render();msg('已打开 '+batch.label+' · '+subject+'，共有 '+questions.length+' 道大题。');}catch(e){if(pdf){$('[data-pdf]').value=pdf.id;$('[data-subject]').value=subject;}msg('打开失败：'+e.message);return;}finally{busy=false;}if(doc)await generate();}
     const actions={auto:generate,add:()=>{setAddMode(!forceNew);msg(forceNew?'请拖动新增一个区域，可与已有框重叠。':'已返回自动判断操作。');},
       undo:()=>{if(!undo.length)return;redo.push(state());records=JSON.parse(undo.pop());active=-1;paint();scheduleSave();},
       redo:()=>{if(!redo.length)return;undo.push(state());records=JSON.parse(redo.pop());active=-1;paint();scheduleSave();},
@@ -186,8 +195,17 @@
     $('[data-filter]').onchange=refreshList;
     let scrollFrame=false;$('[data-scroll]').onscroll=()=>{if(scrollFrame||drag)return;scrollFrame=true;requestAnimationFrame(()=>{scrollFrame=false;if(!doc||drag)return;const top=$('[data-scroll]').getBoundingClientRect().top;let best=null,distance=Infinity;pageSlots.forEach(slot=>{const r=slot.surface.getBoundingClientRect();if(r.bottom>top){const d=Math.abs(r.top-top);if(d<distance){distance=d;best=slot;}}});if(best){pageNo=best.page;canvas=best.canvas;draw=best.draw;root.dataset.currentPage=pageNo;$('[data-page]').textContent=pageNo+' / '+doc.numPages;}});};
     function unload(e){if(dirty()){e.preventDefault();e.returnValue='';}}window.addEventListener('beforeunload',unload);
-    $('[data-subject]').onchange=async()=>{var matching=pdfs.find(p=>p.detectedSubject===$('[data-subject]').value);if(matching)$('[data-pdf]').value=matching.id;await load();};
-    $('[data-pdf]').onchange=load;
+    $('[data-subject]').onchange=async()=>{var matching=pdfs.find(p=>subjectForPdf(p)===$('[data-subject]').value);if(matching)$('[data-pdf]').value=matching.id;await load();};
+    $('[data-pdf]').onchange=async()=>{
+      const next=pdfs.find(p=>p.id===$('[data-pdf]').value),inferred=subjectForPdf(next);
+      if(inferred&&!subjects.includes(inferred)){
+        if(pdf){$('[data-pdf]').value=pdf.id;$('[data-subject]').value=subject;}
+        msg('切换失败：'+inferred+'尚未导入可用小题分，不能沿用'+(subject||'其他科目')+'的题号。');return;
+      }
+      if(inferred)$('[data-subject]').value=inferred;
+      await load();
+      if(!inferred&&pdf?.id===next?.id)msg('未识别到原卷科目，当前按“'+subject+'”的小题分生成题号，请核对顶部科目。');
+    };
     await load();
   };
   window.printPersonalErrorNotebook = async function(){
