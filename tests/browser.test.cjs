@@ -75,8 +75,11 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         // Retain binary PDFs without going through an external parser.
         await page.evaluate(()=>uploadedPdfs.push({id:'binary',fileName:'物理.pdf',status:'ready',source:'local',markdown:'1. 测试',questionIndex:[],fileData:new Uint8Array([37,80,68,70,45,49])}));
         await page.fill('#newBatchName','回归批次'); await page.click('#saveBatchBtn');
-        await page.waitForFunction(()=>!dataOperationBusy && DataPool.batches.length===1 && DataPool.currentBatchId===null);
-        assert.equal(await page.locator('#batchSelector').inputValue(),'__new__');
+        await page.waitForFunction(()=>!dataOperationBusy && DataPool.batches.length===1 && DataPool.currentBatchId===DataPool.batches[0].id);
+        assert.equal(await page.locator('#batchSelector').inputValue(),await page.evaluate(()=>DataPool.batches[0].id));
+        assert.equal(await page.evaluate(()=>combinedStudentData.length),5);
+        for(const tab of ['tab-class-diff','tab-collective','tab-upload']) { await page.click('[data-tab="'+tab+'"]'); }
+        assert.equal(await page.locator('#batchLabelCollective').textContent(),'回归批次');
         await page.reload();await page.waitForFunction(()=>!dataOperationBusy && combinedStudentData.length===5);
         assert.equal(await page.evaluate(()=>uploadedPdfs.find(p=>p.fileName.endsWith('.pdf')).fileData instanceof Uint8Array),true);
         assert.equal(await page.evaluate(()=>createPdfFileFromEntry(uploadedPdfs.find(p=>p.fileName.endsWith('.pdf'))).size),6);

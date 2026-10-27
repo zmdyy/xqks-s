@@ -2069,6 +2069,7 @@ document.getElementById('saveBatchBtn').addEventListener('click', async function
         if (!combinedStudentData.length) { await showAlert('请先上传并解析数据！'); return; }
         var name = document.getElementById('newBatchName').value.trim();
         var savedLabel = '';
+        var savedBatchId = null;
         var savedCount = combinedStudentData.length;
         var ok = false;
 
@@ -2077,6 +2078,7 @@ document.getElementById('saveBatchBtn').addEventListener('click', async function
             if (!batch) return;
             if (name) batch.label = name;
             savedLabel = batch.label;
+            savedBatchId = batch.id;
             ok = await DataPool.syncFromGlobalsIfEditing();
         } else {
             name = name || ('批次' + (DataPool.batches.length + 1));
@@ -2087,18 +2089,19 @@ document.getElementById('saveBatchBtn').addEventListener('click', async function
                 uploadedFilesData: deepClone(uploadedFilesData)
             });
             savedLabel = savedBatch.label;
+            savedBatchId = savedBatch.id;
             refreshBatchList();
             ok = await persistBatches();
         }
 
         if (!ok) return;
 
-        // 保存/更新成功后立即进入“新建批次”状态，避免下一次上传误覆盖刚保存的批次。
+        // 保存后继续选中刚保存的批次，让后续分析直接使用它；下次考试由用户主动新建。
+        loadBatch(savedBatchId);
         refreshBatchList();
-        loadBatch(null);
-        document.getElementById('batchSelector').value = '__new__';
+        document.getElementById('batchSelector').value = savedBatchId;
         document.getElementById('batchStatus').textContent =
-            '已保存「' + savedLabel + '」（' + savedCount + '名学生）；已切换到“+ 新建批次”，可继续上传下一批数据';
+            '已保存「' + savedLabel + '」（' + savedCount + '名学生）；当前已选中，可直接进行分析。录入下一次考试请先选择“+ 新建批次”';
     } finally { setDataControlsBusy(false); }
 });
 document.getElementById('deleteBatchBtn').addEventListener('click', async function() {
