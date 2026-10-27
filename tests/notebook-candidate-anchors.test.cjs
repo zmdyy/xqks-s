@@ -1,0 +1,12 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const ctx={window:{},notebookLineMajor:t=>{let m=String(t).match(/^(\d+)[.、．)]/);return m?m[1]:null}};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync('notebook-crop-review.js','utf8'),ctx);
+const make=ctx.window.buildPaperTextCandidates;
+const pages=[{page:1,height:1000,lines:[{text:'17. 题目',y:800,h:10},{text:'18. 题目',y:600,h:10},{text:'19. 题目',y:300,h:10}]}];
+const c=make(pages,[{major:'17'},{major:'18'},{major:'19'}]);
+assert.deepEqual(Object.keys(c),['17','18','19']);
+assert(Math.abs(c['18'].regions[0].h-.3)<1e-8,'unscored Q19 must stop Q18');
+assert.equal(c['19'].regions[0].page,1);assert.equal(c['19'].confirmed,false);
+assert.equal(make([{page:1,height:1000,lines:[]}],[{major:'18'}])['18'],undefined);
+const d=make([{page:1,height:1000,lines:[{text:'18. a',y:700,h:10},{text:'18. b',y:400,h:10}]}],[{major:'18'}]);assert.equal(d['18'],undefined);
+console.log('PDF question candidate tests passed');

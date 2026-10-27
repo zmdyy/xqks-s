@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict');require('../paper-crop-engine.js');const E=globalThis.PaperCropEngine;
+assert.equal(E.major('02卷30-2'),'30');assert.equal(E.major('0)物理1卷'),null);assert.equal(E.major('01卷物理单选15'),'15');assert.equal(E.number('18. 题干'),'18');assert.equal(E.number('3.14'),null);assert.equal(E.number('(1) 子题'),null);
+const legacy={pdf_info:[{page_idx:0,page_size:[600,800],para_blocks:[{type:'text',bbox:[30,80,550,150],lines:[{spans:[{content:'17. 题干',type:'text'}]}]},{type:'image',bbox:[30,170,300,260]},{type:'text',bbox:[30,280,550,320],lines:[{spans:[{content:'18. 题干'}]}]}]},{page_idx:1,page_size:[600,800],para_blocks:[{type:'text',bbox:[30,30,550,90],lines:[{spans:[{content:'上一题接续'}]}]},{type:'image',bbox:[30,100,300,150]},{type:'text',bbox:[30,200,550,300],lines:[{spans:[{content:'19. 下一题'}]}]}]}]};
+const parsed=E.normalize({format:'middle_json',data:legacy});assert.equal(parsed.blocks.length,6);assert.equal(parsed.blocks[0].x,.05);
+const q=E.candidates(parsed.blocks,[{major:'17'},{major:'18'},{major:'19'}]);assert.equal(q.records['17'].regions.length,1);assert(q.records['17'].regions[0].h>.2);assert.deepEqual(q.records['18'].regions.map(r=>r.page),[1,2]);assert(q.records['18'].regions[1].h>.15);assert.equal(q.records['18'].confirmed,false);
+const list=E.normalize([{type:'text',page_idx:0,bbox:[100,200,900,400],text:'18. hello'}]);assert.equal(list.blocks[0].y,.2);
+assert.equal(E.normalize({pages:[{page_idx:0,blocks:[{bbox:[50,100,500,700],content:'x'}]}]}).blocks.length,0,'unknown page size must not be guessed');
+const modern=E.normalize({extensions:{docvortex_layout:{pages:[{page_idx:0,width_pt:600,height_pt:800}]}},pages:[{page_idx:0,blocks:[{bbox:[30,80,550,150],content:'18. hello'}]}]});assert.equal(modern.blocks[0].y,.1);
+assert(E.validate(q.records,[{major:'17'},{major:'18'},{major:'19'},{major:'20'}],2).includes('第20题未定位'));
+q.records['17'].confirmed=true;assert.equal(E.validate(q.records,[{major:'17'}],2).length,0);
+const text=E.candidates([{page:1,x:.05,y:.1,w:.8,h:.03,text:'17. First',type:'text'},{page:1,x:.05,y:.5,w:.8,h:.03,text:'18. Next',type:'text'}],[{major:'17'},{major:'18'}],'PDF 文字层');assert(text.records['17'].regions[0].h>.39,'preserve image space between native text anchors');
+const split=E.groupNativeBlocks([{page:1,x:.05,y:.1,w:.02,h:.02,text:'18'},{page:1,x:.072,y:.1,w:.2,h:.02,text:'. Question'},{page:1,x:.55,y:.1,w:.2,h:.02,text:'20. Right'}]);assert.equal(split.length,2);assert.equal(E.number(split[0].text),'18');
+const shared={'23':{regions:[{page:1,x:.1,y:.2,w:.8,h:.4}]},'24':{regions:[{page:1,x:.6,y:.4,w:.2,h:.2}]}};
+let overlap=E.overlaps(shared);assert.equal(overlap.length,1);assert.equal(overlap[0].approved,false);
+shared['23'].overlapApprovals=[{signature:overlap[0].signature,reason:'shared material checked'}];assert.equal(E.overlaps(shared)[0].approved,true);
+shared['24'].regions[0].y=.39;assert.equal(E.overlaps(shared)[0].approved,false,'geometry changes invalidate old approval');
+const separate={'23':{regions:[{page:1,x:.1,y:.2,w:.8,h:.2},{page:1,x:.1,y:.4,w:.4,h:.2}]},'24':{regions:[{page:1,x:.6,y:.4,w:.2,h:.2},{page:1,x:.1,y:.61,w:.8,h:.2}]}};assert.equal(E.overlaps(separate).length,0,'separate per-question pictures in the same row must not overlap');
+console.log('PASS geometry: middle/content-list/current schemas, question labels, figure ownership, cross-page continuation, validation');

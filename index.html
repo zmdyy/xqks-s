@@ -82,6 +82,7 @@
                 <input type="file" id="pdfFileInput" class="file-input" accept=".pdf,.md" multiple>
                 <div id="pdfStatusText" class="import-hint">未上传试卷</div><ul class="file-list" id="pdfFileList"></ul>
                 <div class="upload-document-actions">
+                    <button class="upload-btn small upload-btn--document" onclick="openPaperCropWorkspace()" type="button">✂️ 试卷切题复核</button>
                     <button class="upload-btn small upload-btn--refresh" onclick="refreshAllPdfAnalyses()" type="button">🔄 刷新分析</button>
                     <button class="upload-btn small upload-btn--reparse" onclick="reparseAllPdfsMinerU()" type="button">🔄 重新解析（MinerU）</button>
                 </div>
@@ -100,9 +101,14 @@
                 <select id="pdfParseMode" style="padding:4px 8px;border-radius:4px;border:1px solid #ccc;font-size:13px;">
                     <option value="fast">🔵 快速模式（纯文本提取）</option>
                     <option value="precise">🟣 精准模式（AI视觉识别）</option>
-                    <option value="mineru">⚡ MinerU 轻量解析（需本地服务）</option>
-                    <option value="mineru_precise">🧩 MinerU 精准解析（Token+图片嵌入）</option>
+                    <option value="mineru">⚡ MinerU 轻量解析</option>
+                    <option value="mineru_precise">🧩 MinerU VLM 精准解析</option>
+                    <option value="mineru_pipeline">🧩 MinerU Pipeline 精准解析</option>
                 </select>
+            </label>
+            <label id="mineruTokenWrap" style="display:none;align-items:center;gap:4px;font-size:13px;font-weight:600;">
+                MinerU Token：
+                <input type="password" id="mineruToken" autocomplete="off" placeholder="精准解析需要填写自己的 Token" style="padding:4px 8px;border-radius:4px;border:1px solid #ccc;font-size:13px;width:250px;">
             </label>
             <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;">
                 AI提供商：
@@ -1208,7 +1214,9 @@ async function persistBatches() {
             combinedStudentData:b.combinedStudentData || [], allSubjectHeaders:b.allSubjectHeaders || [],
             uploadedFilesData:b.uploadedFilesData || {},
             uploadedPdfs:(b.uploadedPdfs || []).map(AppCore.compactPdf),
-            manualQuestionOverrides:b.manualQuestionOverrides
+            manualQuestionOverrides:b.manualQuestionOverrides,
+            notebookCropReviews:b.notebookCropReviews || {},
+            paperReviewStates:b.paperReviewStates || {}
         }));
         await AppCore.storage.write('scoreBatches', {schemaVersion:2, batches});
         return true;
@@ -1729,7 +1737,8 @@ const DEFAULT_VISION_CONFIG = {
     apiKey: '71d5d8ba103341e5aa29ca61a3ce2056.uwfUkIkInmiRrR9n'
 };
 
-const MINERU_API_BASE = String(window.MINERU_API_BASE || AppCore.storage.localGet('mineruApiBase', '') || 'http://127.0.0.1:8765').replace(/\/+$/, '');
+const MINERU_API_BASE = String(window.MINERU_API_BASE || AppCore.storage.localGet('mineruApiBase', '') ||
+    ((location.hostname === '127.0.0.1' || location.hostname === 'localhost') ? location.origin : 'https://xqksh-zxxq-mineru-zmdyy.onrender.com')).replace(/\/+$/, '');
 
 // Vision config persistence
 function saveVisionConfig() {
@@ -1738,6 +1747,7 @@ function saveVisionConfig() {
         model: document.getElementById('visionModel').value,
         apiKey: document.getElementById('visionApiKey').value,
         mode: document.getElementById('pdfParseMode').value,
+        mineruToken: document.getElementById('mineruToken').value,
         mineruDefaultVersion: 1
     };
     try { localStorage.setItem('visionConfig', JSON.stringify(cfg)); } catch(e) {}
@@ -1756,13 +1766,14 @@ function loadVisionConfig() {
             cfg.apiKey = (curProv && curProv.defaultKey) || DEFAULT_VISION_CONFIG.apiKey;
         }
         if (!cfg.mineruDefaultVersion) cfg.mode = 'mineru_precise';
-        if (!cfg.mode || ['fast','precise','mineru','mineru_precise'].indexOf(cfg.mode) < 0) cfg.mode = 'mineru_precise';
+        if (!cfg.mode || ['fast','precise','mineru','mineru_precise','mineru_pipeline'].indexOf(cfg.mode) < 0) cfg.mode = 'mineru_precise';
 
         document.getElementById('visionProvider').value = cfg.provider;
         updateVisionModelList();
         var m = document.getElementById('visionModel');
         if (m.querySelector('option[value="' + cfg.model + '"]')) m.value = cfg.model;
         document.getElementById('visionApiKey').value = cfg.apiKey;
+        document.getElementById('mineruToken').value = cfg.mineruToken || '';
         document.getElementById('pdfParseMode').value = cfg.mode;
         saveVisionConfig();
     } catch(e) {}
@@ -1772,6 +1783,7 @@ function getVisionConfig() {
         provider: document.getElementById('visionProvider').value,
         model: document.getElementById('visionModel').value,
         apiKey: document.getElementById('visionApiKey').value.trim(),
+        mineruToken: document.getElementById('mineruToken').value.trim(),
         mode: document.getElementById('pdfParseMode').value
     };
 }
@@ -1798,6 +1810,7 @@ function updateVisionModeBadge() {
     var badge = document.getElementById('visionModeBadge');
     var mode = document.getElementById('pdfParseMode').value;
     if (!badge) return;
+    document.getElementById('mineruTokenWrap').style.display = /^mineru_/.test(mode) ? 'flex' : 'none';
     if (mode === 'precise') {
         var key = document.getElementById('visionApiKey').value.trim();
         badge.textContent = key ? '🟣 精准模式' : '⚠ 精准模式（无Key）';
@@ -1807,8 +1820,8 @@ function updateVisionModeBadge() {
         badge.textContent = '⚡ MinerU 轻量解析';
         badge.style.background = '#e0f2fe';
         badge.style.color = '#0369a1';
-    } else if (mode === 'mineru_precise') {
-        badge.textContent = '🧩 MinerU 精准解析';
+    } else if (mode === 'mineru_precise' || mode === 'mineru_pipeline') {
+        badge.textContent = '🧩 MinerU ' + (mode === 'mineru_pipeline' ? 'Pipeline' : 'VLM') + (document.getElementById('mineruToken').value.trim() ? '' : '（无 Token）');
         badge.style.background = '#fef3c7';
         badge.style.color = '#92400e';
     } else {
@@ -2198,6 +2211,9 @@ async function reparsePdfFromDataMinerU(entry, precise) {
     entry.questionIndex = result.questionIndex;
     entry.detectedSubject = result.detectedSubject || detectSubjectByFileName(entry.fileName);
     entry.source = result.source || (precise ? 'mineru_precise' : 'mineru');
+    entry.mineruLayout = result.mineruLayout || null;
+    entry.mineruModel = result.mineruModel || '';
+    entry.mineruTiming = result.timing || null;
     entry.mineruTaskId = result.taskId;
     entry.mineruMarkdownUrl = result.markdownUrl;
     entry.mineruBatchId = result.batchId;
@@ -2237,7 +2253,7 @@ window.refreshAllPdfAnalyses = async function() {
 };
 window.reparseAllPdfsMinerU = async function() {
     var modeEl = document.getElementById('pdfParseMode');
-    var precise = modeEl && modeEl.value === 'mineru_precise';
+    var precise = modeEl && (modeEl.value === 'mineru_pipeline' ? 'pipeline' : modeEl.value === 'mineru_precise' ? 'vlm' : '');
     var label = precise ? 'MinerU 精准解析' : 'MinerU 轻量解析';
     if (!await showConfirm('将通过本地服务重新提交所有PDF到 ' + label + '，可能需要几十秒到几分钟，是否继续？')) { showToast('已取消', 'info'); return; }
     showToast('正在提交 ' + label + '...', 'info');
@@ -2443,8 +2459,183 @@ async function parsePdfToMarkdown(file, progressCb) {
     return { markdown: markdown, questionIndex: questionIndex, detectedSubject: detectedSubject, source: 'local' };
 }
 
+function mineruSleep(ms) {
+    return new Promise(function(resolve) { setTimeout(resolve, ms); });
+}
+
+function mineruSafeJson(text, label) {
+    try { return JSON.parse(text); }
+    catch(e) { throw new Error((label || 'MinerU') + ' 返回非JSON: ' + String(text || '').slice(0, 180)); }
+}
+
+function mineruNormalizeMarkdownAssetUrls(markdown, baseUrl) {
+    if (!markdown || !baseUrl) return markdown || '';
+    var base;
+    try { base = new URL('.', baseUrl).href; } catch(e) { return markdown; }
+    var out = String(markdown);
+    out = out.replace(/!\[([^\]]*)\]\((?!data:|https?:|blob:)([^)]+)\)/gi, function(_, alt, rel) {
+        try { return '![' + alt + '](' + new URL(rel.trim(), base).href + ')'; } catch(e) { return _; }
+    });
+    out = out.replace(/(<img\b[^>]*\bsrc=["'])(?!data:|https?:|blob:)([^"']+)(["'][^>]*>)/gi, function(_, a, rel, b) {
+        try { return a + new URL(rel.trim(), base).href + b; } catch(e) { return _; }
+    });
+    return out;
+}
+
+async function findMineruProxyBase() {
+    var candidates = [];
+    var host = (window.location && window.location.hostname) || '';
+    var isLocalHost = host === '127.0.0.1' || host === 'localhost';
+
+    if (isLocalHost && window.location && /^https?:$/.test(window.location.protocol)) {
+        candidates.push({ base: window.location.origin, timeout: 2500 });
+    }
+
+    if (MINERU_API_BASE) {
+        var cloudTimeout = /\.onrender\.com$/i.test(MINERU_API_BASE) ? 75000 : 12000;
+        if (!candidates.some(function(x) { return x.base === MINERU_API_BASE; })) {
+            candidates.push({ base: MINERU_API_BASE, timeout: cloudTimeout });
+        }
+    }
+
+    for (var i = 0; i < candidates.length; i++) {
+        var base = String(candidates[i].base || '').replace(/\/+$/, '');
+        if (!base) continue;
+        try {
+            var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, candidates[i].timeout) : null;
+            var resp = await fetch(base + '/health', {
+                method: 'GET',
+                cache: 'no-store',
+                signal: ctrl ? ctrl.signal : undefined
+            });
+            if (timer) clearTimeout(timer);
+            if (!resp.ok) continue;
+            var data = await resp.json();
+            if (data && data.ok && data.service === 'xqksh-mineru-proxy') return base;
+        } catch(e) {}
+    }
+    return '';
+}
+
+async function parsePdfToMarkdown_MinerUPreciseProxy(file, progressCb, proxyBase, modelVersion) {
+    var base = String(proxyBase || MINERU_API_BASE || '').replace(/\/+$/, '');
+    var cfg = getVisionConfig();
+    var token = String(cfg.mineruToken || '').trim();
+    var model = modelVersion === 'pipeline' ? 'pipeline' : 'vlm';
+    var modelLabel = model === 'pipeline' ? 'Pipeline' : 'VLM';
+    if (!token) throw new Error('MinerU ' + modelLabel + ' 解析需要填写 MinerU Token');
+
+    var timingStart = Date.now();
+    var runningAt = 0;
+    if (progressCb) progressCb('正在提交试卷到 MinerU ' + modelLabel + '...');
+
+    var startFd = new FormData();
+    startFd.append('file', file, file.name);
+    startFd.append('language', 'ch');
+    startFd.append('mineru_token', token);
+    startFd.append('model_version', model);
+
+    var startResp;
+    try {
+        startResp = await fetch(base + '/mineru/precise/start', {
+            method: 'POST',
+            body: startFd
+        });
+    } catch(e) {
+        throw new Error('无法提交 MinerU ' + modelLabel + ' 任务：' + (e.message || e));
+    }
+
+    var startText = await startResp.text();
+    var startData = mineruSafeJson(startText, 'MinerU ' + modelLabel + ' 提交');
+    if (!startResp.ok || !startData.ok || !startData.batch_id) {
+        var startStage = startData.stage ? (' [' + startData.stage + ']') : '';
+        throw new Error((startData.error || ('MinerU ' + modelLabel + ' 提交失败 HTTP ' + startResp.status)) + startStage);
+    }
+
+    var batchId = startData.batch_id;
+    var dataId = startData.data_id || '';
+    var fileName = startData.file_name || file.name;
+    var maxWait = 15 * 60 * 1000;
+
+    if (progressCb) progressCb('MinerU ' + modelLabel + ' 已接收任务，当前等待调度...');
+
+    while (Date.now() - timingStart < maxWait) {
+        var elapsed = Date.now() - timingStart;
+        await mineruSleep(elapsed < 120000 ? 5000 : 10000);
+
+        var statusFd = new FormData();
+        statusFd.append('mineru_token', token);
+        statusFd.append('batch_id', batchId);
+        statusFd.append('data_id', dataId);
+        statusFd.append('file_name', fileName);
+
+        var statusResp;
+        try {
+            statusResp = await fetch(base + '/mineru/precise/status', {
+                method: 'POST',
+                body: statusFd
+            });
+        } catch(e) {
+            if (progressCb) progressCb('网络短暂波动，正在继续查询 MinerU ' + modelLabel + ' 任务...');
+            continue;
+        }
+
+        var statusText = await statusResp.text();
+        var statusData = mineruSafeJson(statusText, 'MinerU ' + modelLabel + ' 进度');
+        if (!statusResp.ok || !statusData.ok) {
+            var statusStage = statusData.stage ? (' [' + statusData.stage + ']') : '';
+            throw new Error((statusData.error || ('MinerU ' + modelLabel + ' 查询失败 HTTP ' + statusResp.status)) + statusStage);
+        }
+
+        var state = statusData.state || 'waiting';
+        var ep = statusData.extract_progress || {};
+        var now = Date.now();
+        if (!runningAt && state !== 'pending' && state !== 'waiting') runningAt = now;
+        var seconds = Math.floor((now - timingStart) / 1000);
+        var elapsedText = seconds < 60 ? (seconds + '秒') : (Math.floor(seconds / 60) + '分' + (seconds % 60) + '秒');
+
+        if (progressCb) {
+            if (ep.total_pages) {
+                progressCb('MinerU ' + modelLabel + '：' + (ep.extracted_pages || 0) + '/' + ep.total_pages + ' 页 · 已用 ' + elapsedText);
+            } else {
+                var stateText = state === 'pending' ? '排队中' : state;
+                progressCb('MinerU ' + modelLabel + '：' + stateText + ' · 已等待 ' + elapsedText);
+            }
+        }
+
+        if (state === 'done') {
+            var finishedAt = Date.now();
+            var markdown = statusData.markdown || '';
+            if (!markdown) throw new Error('MinerU ' + modelLabel + ' 解析完成，但未返回Markdown');
+            return {
+                markdown: markdown,
+                questionIndex: buildQuestionIndexFromMarkdown(markdown),
+                detectedSubject: detectSubjectByFileName(file.name),
+                source: 'mineru_precise',
+                mineruLayout: statusData.layout || null,
+                mineruModel: model,
+                batchId: batchId,
+                zipUrl: statusData.full_zip_url || '',
+                timing: {
+                    model: model,
+                    queueMs: runningAt ? Math.max(0, runningAt - timingStart) : null,
+                    processingMs: runningAt ? Math.max(0, finishedAt - runningAt) : null,
+                    totalMs: Math.max(0, finishedAt - timingStart)
+                }
+            };
+        }
+    }
+
+    throw new Error('MinerU ' + modelLabel + ' 等待超过15分钟，任务仍未完成');
+}
+
 async function parsePdfToMarkdown_MinerU(file, progressCb, precise) {
     var isPrecise = !!precise;
+    if (isPrecise && file.size > 200 * 1024 * 1024) throw new Error('MinerU 精准解析限制文件不超过 200MB');
+    var base = await findMineruProxyBase();
+    if (!base) throw new Error('无法连接 MinerU 代理，请运行 start_local.bat 后在本地页面使用。');
+    if (isPrecise) return parsePdfToMarkdown_MinerUPreciseProxy(file, progressCb, base, precise === 'pipeline' ? 'pipeline' : 'vlm');
     if (!isPrecise && file.size > 10 * 1024 * 1024) throw new Error('MinerU 轻量接口限制文件不超过 10MB');
     if (isPrecise && file.size > 200 * 1024 * 1024) throw new Error('MinerU 精准解析限制文件不超过 200MB');
     if (!isPrecise && window.pdfjsLib) {
@@ -2470,7 +2661,7 @@ async function parsePdfToMarkdown_MinerU(file, progressCb, precise) {
 
     var resp;
     try {
-        resp = await fetch(MINERU_API_BASE + '/' + (isPrecise ? 'mineru/parse-file-precise' : 'mineru/parse-file'), { method: 'POST', body: fd });
+        resp = await fetch(base + '/' + (isPrecise ? 'mineru/parse-file-precise' : 'mineru/parse-file'), { method: 'POST', body: fd });
     } catch(err) {
         throw new Error('无法连接本地 MinerU 服务。请先运行: python mineru_server.py');
     }
@@ -2506,26 +2697,27 @@ async function parsePdfToMarkdown_LocalFast(file, progressCb) {
     }
 }
 
-async function parsePdfToMarkdown_AutoFallback(file, progressCb, preferPrecise) {
+async function parsePdfToMarkdown_AutoFallback(file, progressCb, preciseModel) {
     var errors = [];
-    if (preferPrecise) {
+    if (preciseModel) {
+        var cfg = getVisionConfig();
+        var model = preciseModel === 'pipeline' ? 'pipeline' : 'vlm';
+        var modelLabel = model === 'pipeline' ? 'Pipeline' : 'VLM';
+        if (!cfg.mineruToken) throw new Error('已选择 MinerU ' + modelLabel + '，请先填写 MinerU Token');
         try {
-            return await parsePdfToMarkdown_MinerU(file, progressCb, true);
+            return await parsePdfToMarkdown_MinerU(file, progressCb, model);
         } catch(err) {
-            errors.push('精准: ' + (err.message || err));
-            console.warn('MinerU 精准解析失败，降级到轻量解析', err);
-            if (progressCb) progressCb('⚠ MinerU 精准解析失败，正在尝试轻量解析...');
+            console.error('MinerU ' + modelLabel + ' 解析失败', err);
+            throw new Error('MinerU ' + modelLabel + ' 解析失败：' + String(err && (err.message || err) || '未知错误') + '。不会自动降级为轻量解析。');
         }
     }
-
     try {
-        return await parsePdfToMarkdown_MinerU(file, progressCb, false);
+        return await parsePdfToMarkdown_MinerU(file, progressCb, '');
     } catch(err) {
         errors.push('轻量: ' + (err.message || err));
         console.warn('MinerU 轻量解析失败，降级到 pdf.js', err);
         if (progressCb) progressCb('⚠ MinerU 轻量解析失败，正在使用 pdf.js 快速模式...');
     }
-
     var result = await parsePdfToMarkdown_LocalFast(file, progressCb);
     result.fallbackErrors = errors;
     return result;
@@ -3093,10 +3285,14 @@ function sanitizeMarkdownImagesForAi(markdown) {
 
 // Strip prefixes/suffixes from Excel item names to get clean number
 function normalizeItemName(item) {
-    if (!item) return item;
-    var s = String(item).replace(/\s+/g, '');
-    s = s.replace(/^(单选题|多选题|填空题|判断题|简答题|计算题|解答题|论述题|实验题|作图题|证明题|问答题|选择题|客观题|单选|多选|填空|判断|简答|计算|解答|论述|实验|作图|证明|问答|选择|客观|第)/, '');
-    s = s.replace(/题$/, '');
+    if (item == null) return '';
+    var s = String(item).replace(/\s+/g, '').replace(/_c\d+$/i,'').replace(/_col\d+$/i,'');
+    // Imported multilevel headers may include numbering, subject and paper metadata.
+    // Everything up to the last 卷 is metadata, never a question number.
+    if (s.indexOf('卷') >= 0) s = s.slice(s.lastIndexOf('卷') + 1);
+    var prefix = /^(?:语文|数学|物理|化学|科学|英语笔试|英语|听说|历史|地理|生物|道德与法治|道法|政治|单选题|多选题|填空题|判断题|简答题|计算题|解答题|论述题|实验题|作图题|证明题|问答题|选择题|客观题|单选|多选|填空|判断|简答|计算|解答|论述|实验|作图|证明|问答|选择|客观|小题得分|小题分|得分|题号|第|[:：_])/;
+    while (prefix.test(s)) s = s.replace(prefix, '');
+    s = s.replace(/[（(]\d+(?:\.\d+)?分[）)]$/,'').replace(/题$/,'');
     return s;
 }
 
@@ -3170,7 +3366,7 @@ function expandItemRefs(item) {
 function getCanonicalQuestionRefInfo(item) {
     var raw = String(item == null ? '' : item).trim();
     var s = (typeof normalizeItemName === 'function' ? normalizeItemName(raw) : raw.replace(/\s+/g,''))
-        .replace(/_c\d+$/i,'').replace(/_col\d+$/i,'').trim();
+        .replace(/_c\d+$/i,'').replace(/_col\d+$/i,'').replace(/^(?:第?\s*\d+\s*卷|[一二三四五六七八九十ⅠⅡⅢ]+卷)\s*/, '').trim();
 
     var out = {
         raw:raw, normalized:s, kind:'unknown',
@@ -3251,8 +3447,7 @@ function getCanonicalQuestionRefInfo(item) {
     var single=s.match(/^(?:第)?(\d{1,3})(?:题)?$/);
     if (single) return setSingle(single[1]);
 
-    var first=s.match(/(?:^|[^0-9])(\d{1,3})(?:[^0-9]|$)/);
-    if (first) return setSingle(first[1]);
+    // Unknown labels stay unknown: selecting the first digit can turn paper 01 into question 1.
 
     out.compactLabel=raw || s;
     out.wordLabel=raw || s;
@@ -6558,7 +6753,7 @@ function renderNotebookQuestionMarkdown(text) {
 
 function getErrorMajorKey(itemName) {
     var info = getCanonicalQuestionRefInfo(itemName);
-    if (info && info.major != null) return String(info.major);
+    if (info) return info.major != null ? String(info.major) : null;
     var raw = String(itemName || '').replace(/_c\d+$/i, '').replace(/_col\d+$/i, '');
     var m = raw.match(/(\d{1,3})/);
     return m ? m[1] : raw;
@@ -6605,7 +6800,7 @@ function mergeSplitErrorItems(errors) {
             maxScore: maxScore,
             rate: maxScore > 0 ? Math.max(0, Math.min(1, score / maxScore)) : 0,
             studentAnswer: uniqueNames.length > 1
-                ? list.map(function(x) { return x.itemName + '：' + (x.studentAnswer || '(空白)'); }).join('；')
+                ? list.filter(function(x) { return !!x.studentAnswer; }).map(function(x) { return x.itemName + '：' + x.studentAnswer; }).join('；')
                 : (list[0].studentAnswer || ''),
             correctAnswer: uniqueNames.length > 1
                 ? list.map(function(x) { return x.itemName + '：' + (x.correctAnswer || '-'); }).join('；')
@@ -6649,10 +6844,13 @@ function collectStudentErrorsFromAllBatches(studentName, studentClass) {
             var subj = stu.subjects[subjName];
             if (!subj || !subj.subScores) return;
             Object.keys(subj.subScores).forEach(function(itemKey) {
+                var questionRef = getCanonicalQuestionRefInfo(itemKey);
+                if (questionRef.kind === 'unknown') return;
                 var item = subj.subScores[itemKey];
                 if (!item || typeof item !== 'object') return;
-                var snum = parseFloat(item.score), mnum = parseFloat(item.maxScore);
-                if (isNaN(snum) || isNaN(mnum) || mnum <= 0 || snum >= mnum) return;
+                var snum = item.score == null || String(item.score).trim() === '' ? NaN : Number(item.score);
+                var mnum = item.maxScore == null || String(item.maxScore).trim() === '' ? NaN : Number(item.maxScore);
+                if (!isFinite(snum) || !isFinite(mnum) || mnum <= 0 || snum < 0 || snum >= mnum) return;
 
                 subjectSet[subjName] = true;
                 batchSet[batch.id] = true;
@@ -7137,6 +7335,20 @@ function extractQuestionTextFromPdf(batch, subjectName, itemKey) {
     return foundText;
 }
 
+function pdfBytesToBase64(bytesLike) {
+    var bytes = AppCore.pdfBytes({fileData:bytesLike});
+    if (!bytes || !bytes.length) return '';
+    var chunk = 0x8000;
+    var parts = [];
+    for (var i = 0; i < bytes.length; i += chunk) {
+        var slice = bytes.subarray(i, Math.min(i + chunk, bytes.length));
+        var s = '';
+        for (var j = 0; j < slice.length; j++) s += String.fromCharCode(slice[j]);
+        parts.push(s);
+    }
+    return btoa(parts.join(''));
+}
+
 function notebookPdfBytes(entry) { try { return AppCore.pdfBytes(entry); } catch (_) { return null; } }
 
 function notebookPdfLineGeometry(textContent) {
@@ -7170,7 +7382,7 @@ function notebookPdfLineGeometry(textContent) {
 
 function notebookMajorFromItem(itemKey) {
     var major = getErrorMajorKey(itemKey);
-    var m = String(major || itemKey || '').match(/(\d{1,3})/);
+    var m = major == null ? null : String(major).match(/(\d{1,3})/);
     return m ? m[1] : null;
 }
 
@@ -7212,6 +7424,7 @@ async function notebookCropPdfPage(page, topPdfY, bottomPdfY) {
 
 async function getErrorNotebookQuestionSnapshots(item) {
     if (!item || !item.batchId || !window.pdfjsLib) return [];
+    if (window.notebookReviewedSnapshots) { try { var reviewed = await window.notebookReviewedSnapshots(item); if (reviewed) return reviewed; } catch (err) { console.warn('复核区域读取失败', err); } }
     var batch = DataPool.batches.find(function(b) { return b.id === item.batchId; });
     if (!batch || !batch.uploadedPdfs || !batch.uploadedPdfs.length) return [];
     var pdfEntry = batch.uploadedPdfs.find(function(p) {
@@ -7328,10 +7541,11 @@ function showPersonalErrorNotebook(studentName, studentClass) {
             html += '</div>';
             // Score line
             html += '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#4b5563;">';
-            html += '<span>得分：<b style="color:' + rateColor + ';font-size:14px;">' + e.score + '/' + e.maxScore + '</b> <span style="display:inline-block;width:48px;height:6px;background:#e5e7eb;border-radius:3px;vertical-align:middle;overflow:hidden;"><span style="display:block;height:100%;width:' + (e.rate * 100) + '%;background:' + rateColor + ';border-radius:3px;transition:width 0.3s;"></span></span> ' + ratePct + '</span>';
-            html += '<span>你的答案：<b style="color:#e74c3c;">' + escapeHtml(e.studentAnswer || '(空白)') + '</b></span>';
-            html += '<span>正确答案：<b style="color:#16a34a;">' + escapeHtml(e.correctAnswer || '-') + '</b></span>';
+            html += '<span>' + (looksLikeSubQuestionName(e.itemName) || e.detailItemNames ? '失分小问得分：' : '得分：') + '<b style="color:' + rateColor + ';font-size:14px;">' + e.score + '/' + e.maxScore + '</b> <span style="display:inline-block;width:48px;height:6px;background:#e5e7eb;border-radius:3px;vertical-align:middle;overflow:hidden;"><span style="display:block;height:100%;width:' + (e.rate * 100) + '%;background:' + rateColor + ';border-radius:3px;transition:width 0.3s;"></span></span> ' + ratePct + '</span>';
+            if (e.studentAnswer) html += '<span>你的答案：<b style="color:#e74c3c;">' + escapeHtml(e.studentAnswer || '未导入答案') + '</b></span>';
+            if (e.correctAnswer) html += '<span>正确答案：<b style="color:#16a34a;">' + escapeHtml(e.correctAnswer || '-') + '</b></span>';
             html += '</div>';
+            html += '<div style="font-size:12px;margin:6px 0">需订正：' + escapeHtml((e.detailItemNames || [e.itemName]).join('、')) + '</div>';
             // Complete structured question from the best available parsed PDF.
             var batch = DataPool.batches.find(function(b) { return b.id === e.batchId; });
             var qText = '';
@@ -7357,6 +7571,7 @@ function showPersonalErrorNotebook(studentName, studentClass) {
                     html += '<div class="markdown-body notebook-full-question" style="margin-top:6px;padding:12px 14px;background:#f9fafb;border-radius:6px;border-left:3px solid #6366f1;overflow:visible;line-height:1.75;" id="' + cId + '">' + renderedQ + '</div>';
                 }
             }
+            html += '<div class="notebook-reviewed-preview" data-subject-index="' + exportPayload.subjects.length + '" data-item-index="' + exportSubject.items.length + '" style="margin-top:8px;color:#92400e;font-size:12px">正在检查原卷复核结果…</div>';
             var exportStem = qText || '';
             exportSubject.items.push({
                 itemName: e.itemName, detailItemNames: e.detailItemNames || [e.itemName], batchLabel: e.batchLabel, batchId: e.batchId,
@@ -7372,6 +7587,17 @@ function showPersonalErrorNotebook(studentName, studentClass) {
     });
     window.lastErrorNotebookExport = exportPayload;
     showErrorNotebookModal('📘 个人错题本 — ' + escapeHtml(studentName), html);
+    document.querySelectorAll('.notebook-reviewed-preview').forEach(async function(el) {
+        var subject = exportPayload.subjects[Number(el.dataset.subjectIndex)];
+        var item = subject && subject.items[Number(el.dataset.itemIndex)];
+        try { var shots = item && window.notebookReviewedSnapshots && await window.notebookReviewedSnapshots(item);
+            if (!shots || !shots.length) { el.textContent = '原卷尚未确认；请在上传管理中打开「试卷切题复核」。'; return; }
+            var card=el.closest('.error-item-card'); if (card) { var old=card.querySelector('.notebook-full-question'); if(old) old.style.display='none'; }
+            el.textContent = '已确认的空白原卷：';
+            shots.forEach(function(src) { var img=document.createElement('img'); img.src=src; img.alt='已复核原题'; img.style.cssText='display:block;max-width:100%;height:auto;margin:8px 0'; el.appendChild(img); });
+        } catch(err) { el.textContent = '已复核原卷读取失败：' + err.message; }
+    });
+
 }
 
 // ============================================================
@@ -8228,6 +8454,7 @@ document.getElementById('visionApiKey').addEventListener('input', function() {
     updateVisionModeBadge();
     saveVisionConfig();
 });
+document.getElementById('mineruToken').addEventListener('input', function() { saveVisionConfig(); updateVisionModeBadge(); });
 document.getElementById('pdfParseMode').addEventListener('change', function() {
     updateVisionModeBadge();
     saveVisionConfig();
@@ -8329,9 +8556,9 @@ async function handleDocumentFiles(selected, epoch) {
                 var rawAB = await f.arrayBuffer();
                 entry.fileData = new Uint8Array(rawAB);
                 var modeEl = document.getElementById('pdfParseMode');
-                var mineruMode = modeEl && (modeEl.value === 'mineru' || modeEl.value === 'mineru_precise');
+                var mineruMode = modeEl && /^mineru/.test(modeEl.value);
                 var result = mineruMode
-                    ? await parsePdfToMarkdown_AutoFallback(f, function(msg) { document.getElementById('pdfStatusText').textContent = msg; }, modeEl.value === 'mineru_precise')
+                    ? await parsePdfToMarkdown_AutoFallback(f, function(msg) { document.getElementById('pdfStatusText').textContent = msg; }, modeEl.value === 'mineru_pipeline' ? 'pipeline' : modeEl.value === 'mineru_precise' ? 'vlm' : '')
                     : await parsePdfToMarkdown(f, function(msg) { document.getElementById('pdfStatusText').textContent = msg; });
                 entry.markdown = result.markdown;
                 entry.questionIndex = result.questionIndex;
@@ -8341,6 +8568,9 @@ async function handleDocumentFiles(selected, epoch) {
                 if (result.markdownUrl) entry.mineruMarkdownUrl = result.markdownUrl;
                 if (result.batchId) entry.mineruBatchId = result.batchId;
                 if (result.zipUrl) entry.mineruZipUrl = result.zipUrl;
+                entry.mineruLayout = result.mineruLayout || null;
+                entry.mineruModel = result.mineruModel || '';
+                entry.mineruTiming = result.timing || null;
             }
             if (entry.source !== 'mineru' && entry.source !== 'mineru_precise' && entry.source !== 'md') {
                 document.getElementById('pdfStatusText').textContent = '正在下载并压缩试卷图片...';
@@ -11566,6 +11796,7 @@ dataStartupPromise = (async function() {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:2px solid #e74c3c;">
             <h3 id="errorNotebookTitle" style="margin:0;font-size:17px;color:#c0392b;"></h3>
             <div style="display:flex;gap:8px;align-items:center;">
+                <button onclick="printPersonalErrorNotebook()" style="padding:6px 12px;">打印／保存 PDF</button>
                 <button onclick="exportErrorNotebookWord().catch(function(e){alert('导出失败: '+e.message)})" style="background:#e74c3c;border:none;color:#fff;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;white-space:nowrap;">导出 Word (.docx)</button>
                 <button onclick="closeErrorNotebookModal()" style="background:none;border:none;font-size:28px;cursor:pointer;color:#999;line-height:1;">×</button>
             </div>
@@ -11614,5 +11845,7 @@ function closeStudentListModal() {
     document.getElementById('studentListModal').style.display = 'none';
 }
 </script>
+<script src="paper-crop-engine.js"></script>
+<script src="notebook-crop-review.js"></script>
 </body>
 </html>

@@ -107,7 +107,7 @@ function notebookCompactAnswer(value) {
         var v = part.replace(/^[^：:]{1,30}[：:]\s*/, '').trim();
         v = v.replace(/^[（(]\s*|\s*[）)]$/g, '').trim();
         if (!v) return false;
-        if (/^(?:空白|未作答|未答|无答案|未提供)$/i.test(v)) return false;
+        if (/^(?:空白|未作答|未答|无答案|未提供|未导入答案|无数据)$/i.test(v)) return false;
         if (/^[-—_.·…，,、\s]+$/.test(v)) return false;
         return true;
     });
@@ -817,6 +817,8 @@ async function exportErrorNotebookWord() {
     if (typeof JSZip === 'undefined') throw new Error('未加载 JSZip（jszip.min.js）');
     if (!payload || !payload.subjects || !payload.subjects.length) throw new Error('没有可导出的错题本数据，请先打开某位学生的错题本');
 
+    var unreviewed = payload.subjects.flatMap(function(s){return s.items.filter(function(it){return typeof window.notebookReviewStatus === 'function' && !window.notebookReviewStatus(it);}).map(function(it){return s.name + ' ' + (it.batchLabel || '') + ' ' + it.itemName;});});
+    if (unreviewed.length && !window.confirm('以下题目尚未完成原卷复核，将在文档中标为未复核：\n' + unreviewed.join('\n') + '\n仍要导出吗？')) return;
     var loadingDiv = document.createElement('div');
     loadingDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:20px 30px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:10010;font-size:14px;color:#333;';
     loadingDiv.textContent = '正在生成错题本 Word，请稍候...';
@@ -855,12 +857,14 @@ async function exportErrorNotebookWord() {
                 bodyXml += docxInfoTable(
                     batchText,
                     questionText,
-                    it.score + '/' + it.maxScore + '（' + ratePct + '%）',
+                    (it.detailItemNames && it.detailItemNames.some(function(n){return /[（(\-]/.test(n);}) ? '失分小问：' : '') + it.score + '/' + it.maxScore + '（' + ratePct + '%）',
                     stuAns,
                     correctAns,
                     sourceText
                 );
 
+                bodyXml += docxBlock(docxStyledRun('需订正：' + (it.detailItemNames || [it.itemName]).join('、'), {size:19,color:'B42318'}), {after:100});
+                if (typeof window.notebookReviewStatus === 'function' && !window.notebookReviewStatus(it)) bodyXml += docxBlock(docxStyledRun('原卷未复核：以下为识别内容，请核对完整性。', {size:19,color:'B45309'}), {after:100});
                 var rawStem = resolveNotebookExportStem(it);
                 var preparedStem = rawStem ? preprocess(rawStem) : '';
                 var structuredUsed = false;
@@ -868,10 +872,11 @@ async function exportErrorNotebookWord() {
 
                 // pdf.js 来源优先使用整题截图：截图已经包含题干、公式和图，
                 // 不再重复输出文字，避免 Word 中一题占用两份空间。
-                if (it.parseSource === 'local' && typeof window.getErrorNotebookQuestionSnapshots === 'function' && it.batchId) {
+                if (typeof window.getErrorNotebookQuestionSnapshots === 'function' && it.batchId && (it.parseSource === 'local' || typeof window.notebookReviewedSnapshots === 'function')) {
                     try {
                         loadingDiv.textContent = '正在生成整题截图：' + subj.name + ' ' + (it.itemName || '');
-                        var localSnapshots = await window.getErrorNotebookQuestionSnapshots(it);
+                        var localSnapshots = typeof window.notebookReviewedSnapshots === 'function' ? await window.notebookReviewedSnapshots(it) : null;
+                        if (!localSnapshots && it.parseSource === 'local') localSnapshots = await window.getErrorNotebookQuestionSnapshots(it);
                         if (localSnapshots && localSnapshots.length) {
                             for (var lsi = 0; lsi < localSnapshots.length; lsi++) {
                                 var localShotXml = await docxImageParagraphFromSource(localSnapshots[lsi], mediaBag, 5850000, 6900000);
