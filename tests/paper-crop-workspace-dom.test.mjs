@@ -31,18 +31,18 @@ const $=s=>w.document.querySelector('#paperCropWorkspace '+s);const click=async 
 assert.match($('[data-message]').textContent,/已使用 MinerU 坐标/);assert.equal(w.document.querySelectorAll('[data-question]').length,3);
 assert.match($('[data-progress]').textContent,/0 \/ 3/);
 assert.equal(w.document.querySelectorAll('[data-paper-page]').length,2,'both pages remain mounted for continuous scrolling');
-await click('next');assert.equal(w.document.querySelector('#paperCropWorkspace').dataset.currentPage,'2');
-assert.equal(w.document.querySelectorAll('[data-paper-page]').length,2,'navigation must not replace pages');await click('prev');
+await w.document.querySelector('[data-question="19"]').onclick();assert.equal(w.document.querySelector('#paperCropWorkspace').dataset.currentPage,'2');
+assert.equal(w.document.querySelectorAll('[data-paper-page]').length,2,'navigation must not replace pages');await w.document.querySelector('[data-question="17"]').onclick();
 
 await click('confirm');assert.equal(batch.notebookCropReviews['["物理","17"]'].confirmed,true);assert.match($('[data-title]').textContent,/18/);assert.equal($('[data-regions]').children.length,2,'cross-page regions');
-await click('draft');assert.equal(batch.notebookCropReviews['["物理","18"]'].confirmed,false);
+await w.flushPaperCropDraft();assert.equal(batch.notebookCropReviews['["物理","18"]'].confirmed,false);
 // Edit the second page directly in the continuous document, keeping its real page number.
-await click('next');$('[data-mode]').value='new';
+await click('add');
 const second=w.document.querySelector('[data-draw="2"]');
 second.onpointerdown({clientX:second.width*.8,clientY:second.height*.8,pointerId:1});
 second.onpointerup({clientX:second.width*.9,clientY:second.height*.9,pointerId:1});
-await click('draft');assert.equal(batch.notebookCropReviews['["物理","18"]'].regions.at(-1).page,2);
-await click('undo');$('[data-mode]').value='adjust';
+await w.flushPaperCropDraft();assert.equal(batch.notebookCropReviews['["物理","18"]'].regions.at(-1).page,2);
+await click('undo');
 
 // Delete a region, undo/redo and restore it.
 $('[data-regions] button:last-child').click();assert.equal($('[data-regions]').children.length,1);await click('undo');assert.equal($('[data-regions]').children.length,2);await click('redo');assert.equal($('[data-regions]').children.length,1);await click('undo');
@@ -51,15 +51,9 @@ const shots=await w.notebookReviewedSnapshots({batchId:'exam',subjectName:'物�
 // Reserializing a saved batch keeps the public mapping and original paper bytes.
 const restored=JSON.parse(saved);assert.equal(restored.notebookCropReviews['["物理","18"]'].confirmed,true);
 // Save failure must roll back persisted records, keeping the editor draft.
-await w.document.querySelector('[data-question="18"]').onclick();$('[data-regions] button:last-child').click();fail=true;await click('draft');assert.match($('[data-message]').textContent,/保存失败/);assert.equal(batch.notebookCropReviews['["物理","18"]'].regions.length,2);fail=false;
-// Backups preserve raw paper identity and shared regions; restore requires matching score columns.
-await click('undo');
-let backupBlob;w.URL.createObjectURL=b=>{backupBlob=b;return 'blob:backup';};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){};
-await click('backup');const backupText=await backupBlob.text();
-assert.equal(JSON.parse(backupText).format,'PaperCropReviewV1');
-$('[data-regions] button:last-child').click();assert.equal($('[data-regions]').children.length,1);
-await $('[data-backup]').onchange({target:{files:[new w.File([backupText],'review.json')],value:'review.json'}});
-assert.equal($('[data-regions]').children.length,2);await click('draft');
+await w.document.querySelector('[data-question="18"]').onclick();$('[data-regions] button:last-child').click();fail=true;await w.flushPaperCropDraft();assert.match($('[data-message]').textContent,/保存失败/);assert.equal(batch.notebookCropReviews['["物理","18"]'].regions.length,2);fail=false;
+// Standalone system backup is covered by full-data-backup.test.mjs.
+await click('undo');await w.flushPaperCropDraft();
 // Actual DOCX packaging uses the confirmed PNG slices.
 w.JSZip=require('../jszip.min.js');
 w.eval(fs.readFileSync('notebook-docx.js','utf8'));
@@ -97,3 +91,4 @@ assert.match($('[data-title]').textContent,/15/);assert.match($('[data-progress]
 assert.match($('[data-message]').textContent,/已使用 MinerU 坐标/);
 console.log('PASS workspace: real two-page PDF/MinerU layout, all-score list, confirm-next, draft, undo/redo, complete, shared PNG crops, rollback, real DOCX image packaging, automatic open, paper-header regression, continuous multi-page editing and reviewed overlap approvals');
 await w.happyDOM.close();
+

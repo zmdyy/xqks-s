@@ -1215,6 +1215,7 @@ async function persistBatches() {
             uploadedFilesData:b.uploadedFilesData || {},
             uploadedPdfs:(b.uploadedPdfs || []).map(AppCore.compactPdf),
             manualQuestionOverrides:b.manualQuestionOverrides,
+            questionConceptMap:b.questionConceptMap || {},
             notebookCropReviews:b.notebookCropReviews || {},
             paperReviewStates:b.paperReviewStates || {}
         }));
@@ -11864,6 +11865,7 @@ function closeStudentListModal() {
 }
 </script>
 <script src="paper-crop-engine.js"></script>
-<script src="notebook-crop-review.js"></script>
+<script src="notebook-crop-review.js?v=6"></script>
+<script src="full-data-backup.js?v=1"></script>
 </body>
 </html>
