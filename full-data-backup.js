@@ -34,7 +34,31 @@ async function createZip(data){validate(data);const text=JSON.stringify(await en
 async function readZip(bytes){const zip=await JSZip.loadAsync(bytes),entry=zip.file('data.json'),manifest=zip.file('manifest.json');if(!entry||!manifest)throw Error('压缩包缺少备份数据');const m=JSON.parse(await manifest.async('string')),text=await entry.async('string');if(m.format!=='ScoreFullBackup'||m.version!==1||m.sha256!==await digest(text))throw Error('备份校验失败，文件可能不完整');return validate(decode(JSON.parse(text)));}
 async function writeAll(data){for(const name of DB_NAMES){const saved=data.databases.find(d=>d.name===name);if(saved)await putDB(saved);else if(name!=='ScoreAnalysisDB'){const existing=await dumpDB(name);if(existing){existing.stores.forEach(s=>s.rows=[]);await putDB(existing);}}}applyLocal(data.local);DataPool.batches=data.batches;if(!await persistBatches())throw Error('成绩及原卷保存失败');applyMemory(data);}
 async function restore(data){validate(data);const before=await capture();try{await writeAll(data);}catch(e){try{await writeAll(before);}catch(rollback){throw Error(e.message+'；回滚失败：'+rollback.message+'。请保留备份并重试恢复。');}throw Error(e.message+'；已恢复到操作前的数据。');}}
-function mount(){const bar=document.querySelector('.batch-bar');if(!bar)return;const box=document.createElement('div');box.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0';box.innerHTML='<button type="button" data-full-export>导出完整备份</button><button type="button" data-full-restore>恢复完整备份</button><input type="file" accept=".zip" hidden><span role="status" style="font-size:12px;color:#475569">保存全部考试批次、原卷及复核数据；题库单独备份，不含 API 密钥。</span>';bar.after(box);const exp=box.querySelector('[data-full-export]'),res=box.querySelector('[data-full-restore]'),input=box.querySelector('input'),status=box.querySelector('span');let working=false;async function run(fn){if(working)return;working=true;exp.disabled=res.disabled=true;try{await fn();}catch(e){status.textContent='操作失败：'+e.message;}finally{working=false;exp.disabled=res.disabled=false;}}
+function mount(){
+ const nav=document.querySelector('.tab-nav');if(!nav||document.querySelector('.system-backup-tools'))return;
+ if(!document.getElementById('score-backup-ui-style')){const style=document.createElement('style');style.id='score-backup-ui-style';style.textContent=`
+ .system-tools-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
+ .system-backup-tools{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex:0 1 auto;min-width:0;margin-left:auto}
+ .system-backup-hint{font-size:12px;color:var(--text-tertiary,#64748b);line-height:1.5;max-width:500px;text-align:right;overflow-wrap:anywhere}
+ .system-backup-actions{display:flex;gap:8px;flex:none}
+ .system-backup-tools button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:8px 14px;border-radius:8px;border:1px solid var(--primary,#1c3d5c);font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;white-space:nowrap;cursor:pointer;transition:background .15s,box-shadow .15s,transform .15s}
+ .system-backup-tools [data-full-export]{background:var(--primary,#1c3d5c);color:#fff;box-shadow:0 2px 5px #1c3d5c18}
+ .system-backup-tools [data-full-restore]{background:var(--surface,#fff);color:var(--primary,#1c3d5c)}
+ .system-backup-tools [data-full-export]:hover:not(:disabled){background:var(--primary-light,#2d5980);box-shadow:0 3px 8px #1c3d5c25}
+ .system-backup-tools [data-full-restore]:hover:not(:disabled){background:var(--bg-card,#f1f5f9)}
+ .system-backup-tools button:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+ .system-backup-tools button:disabled{opacity:.5;cursor:wait}
+ .system-backup-tools svg{width:16px;height:16px;flex:none}
+ @media(max-width:760px){.system-backup-tools{width:100%;flex-wrap:wrap;gap:6px 10px}.system-backup-hint{flex:1;min-width:170px}}
+ @media print{.system-backup-tools{display:none!important}}
+ `;document.head.appendChild(style);}
+ const box=document.createElement('div');box.className='system-backup-tools';box.setAttribute('aria-label','系统备份与恢复');
+ const icon=path=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+path+'</svg>';
+ box.innerHTML='<span class="system-backup-hint" data-backup-status role="status">保存全部考试批次、原卷及复核数据；题库单独备份，不含 API 密钥。</span><div class="system-backup-actions"><button type="button" data-full-export title="备份全部考试批次、原卷及复核数据">'+icon('<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>')+'备份</button><button type="button" data-full-restore title="从系统备份 ZIP 恢复数据，题库保持不变">'+icon('<path d="M12 16V4m-4 4 4-4 4 4M4 16v4h16v-4"/>')+'恢复备份</button></div><input type="file" accept=".zip" hidden>';
+ let row=nav.previousElementSibling;
+ if(!row?.querySelector('a[href^="question-bank/"]')){row=document.createElement('div');nav.before(row);}
+ row.classList.add('system-tools-row');row.appendChild(box);
+ const exp=box.querySelector('[data-full-export]'),res=box.querySelector('[data-full-restore]'),input=box.querySelector('input'),status=box.querySelector('[data-backup-status]');let working=false;async function run(fn){if(working)return;working=true;exp.disabled=res.disabled=true;try{await fn();}catch(e){status.textContent='操作失败：'+e.message;}finally{working=false;exp.disabled=res.disabled=false;}}
  exp.onclick=()=>run(async()=>{status.textContent='正在整理并压缩全部数据…';const data=await capture(),bytes=await createZip(data),url=URL.createObjectURL(new Blob([bytes],{type:'application/zip'})),a=document.createElement('a');a.href=url;a.download='学情系统完整备份_'+new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}).replace(/[: ]/g,'-')+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);status.textContent='已生成完整备份（'+data.batches.length+' 个批次），请保留下载的 ZIP；恢复不依赖旧备份。';});
  res.onclick=()=>input.click();input.onchange=()=>run(async()=>{const file=input.files[0];input.value='';if(!file)return;status.textContent='正在校验备份…';const data=await readZip(await file.arrayBuffer());if(!await showConfirm('备份包含 '+data.batches.length+' 个批次，生成于 '+data.createdAt+'。恢复将替换当前成绩、原卷与复核数据，题库保持不变，请先导出当前完整备份，并关闭其他系统页面。是否继续？')){status.textContent='已取消恢复';return;}status.textContent='正在恢复…';await restore(data);status.textContent='完整备份已恢复，可继续添加新数据；API 密钥请按需重新填写。';});}
 root.FullDataBackup={capture,createZip,readZip,restore,validate,encode,decode,dumpDB};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
