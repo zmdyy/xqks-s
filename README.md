@@ -88,6 +88,15 @@ npm run test:browser
 
 ## 空白原卷切题复核
 
-支持整卷连续滚动、MinerU 版面坐标候选、人工调整与跨页多区域、重叠核对及复核备份。公共原卷复核后，个人错题本按小题失分自动复用区域，并支持 Word 与打印／保存 PDF。
+支持整卷连续滚动、MinerU 版面坐标候选、人工调整与跨页多区域、重叠核对及自动保存。公共原卷复核后，个人错题本按小题失分自动复用区域，并支持 Word 与打印／保存 PDF。
 
-本地双击 `start_local.bat`，在设置中填写自己的 MinerU Token；无需部署本地 MinerU 模型。操作与验证边界见 [本地使用说明](LOCAL_PAPER_REVIEW.md)。切题及宿主适配测试：`npm run test:paper`。
+本地双击 `start_system.vbs`，在设置中填写自己的 MinerU Token；无需部署本地 MinerU 模型。操作与验证边界见 [本地使用说明](LOCAL_PAPER_REVIEW.md)。切题及宿主适配测试：`npm run test:paper`。
+
+## 本地后台启动与诊断
+
+- `start_system.vbs`：日常启动，不显示命令行窗口；重复点击复用服务。
+- `diagnose_local.bat`：显示状态与实时日志，关闭诊断窗口不影响后台服务。
+- `stop_local.bat`：停止当前文件夹启动的后台服务，不停止其他 Python 程序。
+- 首次安装显示进度，启动失败有提示。操作及 Windows 实机验证边界见 [本地使用说明](LOCAL_PAPER_REVIEW.md)。
+- 复核顶部工具栏合并为一行，右侧提供红色“× 关闭”。系统完整备份不含题库，题库继续独立备份；恢复旧系统备份也不会覆盖题库。
+

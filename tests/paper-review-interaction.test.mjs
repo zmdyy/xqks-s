@@ -8,7 +8,7 @@ w.eval(fs.readFileSync('paper-crop-engine.js','utf8'));Object.assign(w,{DataPool
 w.eval(fs.readFileSync('notebook-crop-review.js','utf8'));await w.openPaperCropWorkspace();
 const $=s=>w.document.querySelector(s);const el=$('[data-draw="1"]');
 function drag(a,b){el.onpointerdown({clientX:a[0],clientY:a[1],button:0,pointerId:1});el.onpointermove({clientX:b[0],clientY:b[1],pointerId:1});el.onpointerup({clientX:b[0],clientY:b[1],pointerId:1});}
-assert.equal($('[data-mode]'),null);assert.equal($('[data-a="import"]'),null);assert.equal($('[data-a="backup"]'),null);
+assert.ok($('.paper-toolbar'));assert.equal($('[data-a="close"]').textContent,'× 关闭');assert.equal($('[data-a="close"]').closest('.paper-toolbar-main'),null,'close stays outside scrolling toolbar');assert.equal($('[data-mode]'),null);assert.equal($('[data-a="import"]'),null);assert.equal($('[data-a="backup"]'),null);
 // Blank area adds without mode changes and binds to 15.
 drag([600,500],[800,700]);await new Promise(resolve=>setTimeout(resolve,480));assert.ok(writes>0,'edits save automatically without clicking any save button');assert.equal(await w.flushPaperCropDraft(),true);assert.equal(batch.notebookCropReviews['["物理","15"]'].regions.length,2);assert.equal(batch.notebookCropReviews['["物理","15"]'].confirmed,false);
 // Selecting alone neither dirties nor saves.
