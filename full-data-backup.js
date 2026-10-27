@@ -39,6 +39,7 @@ function mount(){
  if(!document.getElementById('score-backup-ui-style')){const style=document.createElement('style');style.id='score-backup-ui-style';style.textContent=`
  .system-tools-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
  .system-backup-tools{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex:0 1 auto;min-width:0;margin-left:auto}
+ .system-backup-hint:empty{display:none}
  .system-backup-hint{font-size:12px;color:var(--text-tertiary,#64748b);line-height:1.5;max-width:500px;text-align:right;overflow-wrap:anywhere}
  .system-backup-actions{display:flex;gap:8px;flex:none}
  .system-backup-tools button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:8px 14px;border-radius:8px;border:1px solid var(--primary,#1c3d5c);font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;white-space:nowrap;cursor:pointer;transition:background .15s,box-shadow .15s,transform .15s}
@@ -54,7 +55,7 @@ function mount(){
  `;document.head.appendChild(style);}
  const box=document.createElement('div');box.className='system-backup-tools';box.setAttribute('aria-label','系统备份与恢复');
  const icon=path=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+path+'</svg>';
- box.innerHTML='<span class="system-backup-hint" data-backup-status role="status">保存全部考试批次、原卷及复核数据；题库单独备份，不含 API 密钥。</span><div class="system-backup-actions"><button type="button" data-full-export title="备份全部考试批次、原卷及复核数据">'+icon('<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>')+'备份</button><button type="button" data-full-restore title="从系统备份 ZIP 恢复数据，题库保持不变">'+icon('<path d="M12 16V4m-4 4 4-4 4 4M4 16v4h16v-4"/>')+'恢复备份</button></div><input type="file" accept=".zip" hidden>';
+ box.innerHTML='<span class="system-backup-hint" data-backup-status role="status"></span><div class="system-backup-actions"><button type="button" data-full-export title="备份全部考试批次、原卷及复核数据">'+icon('<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>')+'备份</button><button type="button" data-full-restore title="从系统备份 ZIP 恢复数据，题库保持不变">'+icon('<path d="M12 16V4m-4 4 4-4 4 4M4 16v4h16v-4"/>')+'恢复备份</button></div><input type="file" accept=".zip" hidden>';
  let row=nav.previousElementSibling;
  if(!row?.querySelector('a[href^="question-bank/"]')){row=document.createElement('div');nav.before(row);}
  row.classList.add('system-tools-row');row.appendChild(box);
