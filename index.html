@@ -368,7 +368,8 @@
                 <input type="checkbox" id="collectiveHeatmapOnlyAbnormal">
                 <span>只看异常题</span>
             </label>
-            <button type="button" class="filter-btn" id="collectiveHeatmapExportPngBtn" disabled>导出 PNG</button>
+            <button type="button" class="filter-btn" id="collectiveHeatmapExportPngBtn" title="按4倍像素尺寸导出完整热力图" disabled>高清 PNG</button>
+            <button type="button" class="filter-btn" id="collectiveHeatmapExportSvgBtn" title="矢量格式，放大清晰，适合打印和插入文档" disabled>矢量 SVG</button>
             <span id="collectiveHeatmapLegendText" style="font-size:12px;color:#64748b;margin-left:auto;">得分率：颜色越偏红表示得分率越低，越偏蓝表示得分率越高</span>
         </div>
         <div id="collectiveHeatmapEmpty" style="display:none;padding:22px;text-align:center;color:#94a3b8;">暂无可绘制的小题数据。</div>
@@ -5811,8 +5812,10 @@ function resetCollectiveHeatmapChart(chartEl) {
 }
 
 function setCollectiveHeatmapExportEnabled(enabled) {
-    var button = document.getElementById('collectiveHeatmapExportPngBtn');
-    if (button) button.disabled = !enabled;
+    ['collectiveHeatmapExportPngBtn','collectiveHeatmapExportSvgBtn'].forEach(function(id) {
+        var button = document.getElementById(id);
+        if (button) button.disabled = !enabled;
+    });
 }
 
 function formatCollectiveHeatmapAxisLabel(value) {
@@ -5860,7 +5863,8 @@ function downloadCollectiveHeatmapBlob(blob, filename) {
     setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
 }
 
-async function exportCollectiveHeatmap() {
+async function exportCollectiveHeatmap(format) {
+    format = format === 'svg' ? 'svg' : 'png';
     var chartEl = document.getElementById('collectiveHeatmapChart');
     var chart = chartEl && chartEl.__chart;
     var model = collectiveHeatmapContext;
@@ -5876,14 +5880,22 @@ async function exportCollectiveHeatmap() {
     setCollectiveHeatmapExportEnabled(false);
     var imageUrl = null;
     try {
-        // 从完整 SVG 导出，包含横向滚动区域之外的题目。
+        // 等字体就绪后从完整 SVG 导出，保留滚动区域外的题目和可缩放文字。
+        if (document.fonts && document.fonts.ready) await document.fonts.ready;
         var dataUrl = chart.getDataURL({type:'svg',backgroundColor:'#ffffff'});
         if (!/^data:image\/svg\+xml/.test(dataUrl)) throw new Error('未获得完整图像');
         var svgText = decodeURIComponent(dataUrl.slice(dataUrl.indexOf(',') + 1));
         svgText = svgText.replace(/(<svg\b[^>]*>)/, '$1<rect width="100%" height="100%" fill="#ffffff"/>');
         var svgBlob = new Blob([svgText], {type:'image/svg+xml;charset=utf-8'});
+        if (format === 'svg') {
+            downloadCollectiveHeatmapBlob(svgBlob, filename + '.svg');
+            return;
+        }
         var width = chart.getWidth(), height = chart.getHeight();
-        var scale = Math.min(2, 16384 / width, 16384 / height, Math.sqrt(32000000 / (width * height)));
+        if (!(width > 0 && height > 0)) throw new Error('图表尺寸无效，请重新生成热力图');
+        // 常规图4倍导出；超大图保留至少2倍，避免静默缩小成模糊图片。
+        var scale = Math.min(4, 16384 / width, 16384 / height, Math.sqrt(64000000 / (width * height)));
+        if (scale < 2) throw new Error('图表过大，完整 PNG 无法保持清晰度。请使用“矢量 SVG”，或缩小班级/题目筛选范围后再导出 PNG。');
         imageUrl = URL.createObjectURL(svgBlob);
         var image = new Image();
         await new Promise(function(resolve, reject) {
@@ -5896,6 +5908,8 @@ async function exportCollectiveHeatmap() {
         canvas.height = Math.max(1, Math.round(height * scale));
         var context = canvas.getContext('2d');
         if (!context) throw new Error('浏览器无法生成 PNG');
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
         context.fillStyle = '#ffffff';
         context.fillRect(0, 0, canvas.width, canvas.height);
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -8637,7 +8651,8 @@ updateCrossExamRankRangeUI();
 document.getElementById('collectiveHeatmapFallbackStep').addEventListener('change', function() { renderCollectiveHeatmap(); });
 document.getElementById('collectiveHeatmapMode').addEventListener('change', function() { renderCollectiveHeatmap(); });
 document.getElementById('collectiveHeatmapOnlyAbnormal').addEventListener('change', function() { renderCollectiveHeatmap(); });
-document.getElementById('collectiveHeatmapExportPngBtn').addEventListener('click', function() { exportCollectiveHeatmap(); });
+document.getElementById('collectiveHeatmapExportPngBtn').addEventListener('click', function() { exportCollectiveHeatmap('png'); });
+document.getElementById('collectiveHeatmapExportSvgBtn').addEventListener('click', function() { exportCollectiveHeatmap('svg'); });
 document.querySelectorAll('input[id^="fullMark_"]').forEach(function(input) {
     input.addEventListener('change', function() { renderCollectiveHeatmap(); });
 });
