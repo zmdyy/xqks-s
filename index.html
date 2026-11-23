@@ -9,9 +9,9 @@
     <link rel="preload" href="seating.js" as="script">
     <link rel="preload" href="seating-data.js" as="script">
     <link rel="preload" href="seating-engine.js" as="script">
-    <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="app.css?v=workspace-entry">
     <script src="app-core.js"></script>
-    <script src="workspace-manager.js"></script>
+    <script src="workspace-manager.js?v=workspace-entry"></script>
     <script src="echarts.min.js"></script>
     <script src="xlsx.full.min.js"></script>
     <script>if(typeof echarts==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js';document.head.appendChild(s)}if(typeof XLSX==='undefined'){var s2=document.createElement('script');s2.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';document.head.appendChild(s2)}</script>
@@ -30,6 +30,7 @@
 <body>
 <div class="container">
     <h1>学情可视化展板</h1>
+    <div class="system-tools-row" id="scoreToolsRow"></div>
 
     <div class="tab-nav">
         <button class="active" data-tab="tab-upload">上传管理</button>
@@ -11793,22 +11794,26 @@ try { var s2 = document.createElement('script'); s2.src = './pdf.min.js'; docume
 
 // Resolve the year/grade workspace before touching any score data. Each URL is bound to one isolated database.
 setDataControlsBusy(true);
-document.getElementById('batchStatus').textContent = '正在选择工作区并恢复数据…';
+document.getElementById('batchStatus').textContent = '正在加载成绩数据…';
 dataStartupPromise = (async function() {
+    let workspaceReady = false;
     try {
         const workspace = await WorkspaceUI.resolve();
-        if (!workspace) return;
-        await AppCore.storage.setWorkspace(workspace.id);
+        if (!workspace) {
+            document.getElementById('batchStatus').textContent = '此工作区正在另一标签页使用';
+            return;
+        }
+        workspaceReady = true;
         const ok = await restoreBatches();
         refreshBatchList();
         if (DataPool.currentBatchId) loadBatch(DataPool.currentBatchId);
-        else if (ok) document.getElementById('batchStatus').textContent = '当前工作区暂无考试批次，请上传数据后保存批次';
+        else if (ok) document.getElementById('batchStatus').textContent = '请先上传总成绩表，再保存考试批次';
         const active = document.querySelector('.tab-nav button.active');
         if (active && combinedStudentData.length) switchTab(active.dataset.tab);
     } catch (error) {
         console.error('工作区初始化失败', error);
         document.getElementById('batchStatus').textContent = '工作区初始化失败：' + error.message;
-    } finally { setDataControlsBusy(false); }
+    } finally { if (workspaceReady) setDataControlsBusy(false); }
 })();
 
 // Initialize Vision AI UI
@@ -11888,6 +11893,6 @@ function closeStudentListModal() {
 </script>
 <script src="paper-crop-engine.js"></script>
 <script src="notebook-crop-review.js?v=8"></script>
-<script src="full-data-backup.js?v=4"></script>
+<script src="full-data-backup.js?v=5"></script>
 </body>
 </html>

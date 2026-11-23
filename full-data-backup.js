@@ -197,7 +197,7 @@ async function restore(data,options){
  let targetId=previousId,targetMeta=null,before=null;
  if(createNew){
   const source=options.workspaceMeta||data.workspaceMeta;
-  if(!source||!source.academicYear||!source.grade)throw Error('备份缺少学年或年级信息，请先指定恢复归属');
+  if(!source)throw Error('备份缺少工作区信息，请先指定恢复归属');
   const baseName=source.name||[source.academicYear,source.grade].filter(Boolean).join(' · ');
   targetMeta=await AppCore.workspaces.create({academicYear:source.academicYear,grade:source.grade,name:(baseName||'恢复工作区')+'（恢复）',restoredFromWorkspaceId:data.sourceWorkspaceId||source.id||null,restoredFromBackup:true});
   targetId=targetMeta.id;
@@ -235,8 +235,9 @@ function mount(){
  const box=document.createElement('div');box.className='system-backup-tools';box.setAttribute('aria-label','当前工作区备份与恢复');
  const icon=path=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+path+'</svg>';
  box.innerHTML='<span class="system-backup-hint" data-backup-status role="status"></span><div class="system-backup-actions"><button type="button" data-full-export title="只备份当前工作区的考试批次、原卷及复核数据">'+icon('<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>')+'备份当前工作区</button><button type="button" data-full-restore title="校验备份并创建一个新的独立工作区">'+icon('<path d="M12 16V4m-4 4 4-4 4 4M4 16v4h16v-4"/>')+'恢复到新工作区</button></div><input type="file" accept=".zip" hidden>';
- let row=nav.previousElementSibling;
- if(!row?.querySelector('a[href^="question-bank/"]')){row=document.createElement('div');nav.before(row);}
+ let row=document.getElementById('scoreToolsRow');
+ if(!row&&nav.previousElementSibling?.querySelector('a[href^="question-bank/"]'))row=nav.previousElementSibling;
+ if(!row){row=document.createElement('div');nav.before(row);}
  row.classList.add('system-tools-row');row.appendChild(box);
  const exp=box.querySelector('[data-full-export]'),res=box.querySelector('[data-full-restore]'),input=box.querySelector('input'),status=box.querySelector('[data-backup-status]');
  let working=false;
@@ -253,7 +254,7 @@ function mount(){
   status.textContent='正在校验备份…';
   const data=await readZip(await file.arrayBuffer());
   let meta=data.workspaceMeta;
-  if(!meta||!meta.academicYear||!meta.grade){
+  if(!meta){
    meta=await root.WorkspaceUI.requestWorkspaceMeta({name:'旧版备份恢复',grade:'待整理'});
    if(!meta){status.textContent='已取消恢复';return;}
   }
