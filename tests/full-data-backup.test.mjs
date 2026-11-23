@@ -21,7 +21,9 @@ const legacy=await api.capture();legacy.databases.push(await api.dumpDB('Physics
 w.DataPool.batches.push({id:'b2',label:'考试2',combinedStudentData:[],uploadedPdfs:[]});const second=await api.readZip(await api.createZip(await api.capture()));assert.equal(second.batches.length,2);
 // Integrity rejects damaged payload before writes.
 zip.file('data.json',raw+' ');const corrupted=await zip.generateAsync({type:'uint8array'});await assert.rejects(()=>api.readZip(corrupted),/校验失败/);
-// Restoring a current-format ZIP defaults to a new isolated workspace, not the open one.
-const fresh=await api.restore(restored,{navigate:false});assert.notEqual(fresh.id,'backup-test');assert.equal(w.AppCore.storage.workspaceId(),fresh.id);assert.equal(w.DataPool.batches.length,1);await w.AppCore.storage.setWorkspace('backup-test');
 // A storage failure rolls back batches, bank and local data.
-const prior=w.DataPool.batches;let calls=0;w.persistBatches=async()=>++calls>1?persistNative():false;await assert.rejects(()=>api.restore(restored,{createWorkspace:false,navigate:false}),/已恢复到操作前/);assert.equal(w.DataPool.batches.length,2);db.close();await w.happyDOM.close();console.log('Full ZIP roundtrip, PDF/figures/layout/crops, independent bank preservation, secrets exclusion, standalone repeat, integrity and rollback passed.');
+const prior=w.DataPool.batches;let calls=0;w.persistBatches=async()=>++calls>1?persistNative():false;await assert.rejects(()=>api.restore(restored,{createWorkspace:false,navigate:false}),/已恢复到操作前/);assert.equal(w.DataPool.batches.length,2);
+// Restoring a current-format ZIP defaults to a new isolated workspace, not the open one.
+const fresh=await api.restore(restored,{navigate:false});assert.notEqual(fresh.id,'backup-test');assert.equal(w.AppCore.storage.workspaceId(),fresh.id);assert.equal(w.DataPool.batches.length,1);
+const originalDb=await api.dumpDB('ScoreAnalysisDB_backup-test');const originalRows=originalDb.stores.find(s=>s.name==='batches').rows.find(r=>r.key==='scoreBatches').value.value;assert.equal((Array.isArray(originalRows)?originalRows:originalRows.batches).length,1);
+db.close();await w.happyDOM.close();console.log('Full ZIP roundtrip, PDF/figures/layout/crops, independent bank preservation, secrets exclusion, standalone repeat, integrity and rollback passed.');
