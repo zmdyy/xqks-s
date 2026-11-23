@@ -19,7 +19,7 @@ var seatingStore = SeatingData.createStore(AppCore.storage, {
             return value;
         } catch (_) { return null; }
     },
-    setItem: function(key, value) { window.localStorage.setItem(AppCore.storage.namespacePrefix() + key, value); }
+    setItem: function(key, value) { AppCore.storage.assertLease(); window.localStorage.setItem(AppCore.storage.namespacePrefix() + key, value); }
 }, function() { return window.location.pathname.replace(/[^/]*$/, ''); });
 var seatingLoadEpoch = 0;
 

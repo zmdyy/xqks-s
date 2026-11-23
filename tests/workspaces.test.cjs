@@ -12,13 +12,14 @@ async function put(db,key,value){await new Promise((resolve,reject)=>{const tx=d
  await core.storage.setWorkspace(archive.id);const copied=await core.storage.read('scoreBatches');assert.equal(copied.batches[0].id,'old');
  const oldAgain=await openLegacy();const oldRows=await new Promise((resolve,reject)=>{const r=oldAgain.transaction('batches','readonly').objectStore('batches').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});assert.equal(oldRows[0].value.batches[0].id,'old');oldAgain.close();
  const a=await core.workspaces.create({academicYear:'2026—2027',grade:'八年级'}),b=await core.workspaces.create({academicYear:'2026—2027',grade:'九年级'});
- await core.storage.setWorkspace(a.id);await core.storage.write('scoreBatches',{batches:[{id:'a'}]});
- await core.storage.setWorkspace(b.id);assert.equal(await core.storage.read('scoreBatches'),undefined);await core.storage.write('scoreBatches',{batches:[{id:'b'}]});
- await core.storage.setWorkspace(a.id);assert.equal((await core.storage.read('scoreBatches')).batches[0].id,'a');
+ await core.storage.setWorkspace(a.id);assert.equal(await core.storage.acquireLease(),true);await core.storage.write('scoreBatches',{batches:[{id:'a'}]});
+ await core.storage.setWorkspace(b.id);assert.equal(await core.storage.acquireLease(),true);assert.equal(await core.storage.read('scoreBatches'),undefined);await core.storage.write('scoreBatches',{batches:[{id:'b'}]});
+ await core.storage.setWorkspace(a.id);assert.equal(await core.storage.acquireLease(),true);assert.equal((await core.storage.read('scoreBatches')).batches[0].id,'a');
+ const lockKey='xqks:workspace-lock:'+a.id;global.localStorage.setItem(lockKey,JSON.stringify({owner:'another-tab',expiresAt:Date.now()+120000}));await assert.rejects(()=>core.storage.write('scoreBatches',{batches:[{id:'should-not-write'}]}),/编辑锁已失效/);global.localStorage.removeItem(lockKey);assert.equal(await core.storage.acquireLease(),true);
  assert.notEqual(core.storage.databaseName(a.id),core.storage.databaseName(b.id));
  core.storage.workspaceLocalSet('seating:test','a');await core.storage.setWorkspace(b.id);assert.equal(core.storage.workspaceLocalGet('seating:test'),undefined);
  await core.storage.setWorkspace(a.id);assert.equal(core.storage.workspaceLocalGet('seating:test'),'a');
  const listed=await core.workspaces.list();assert.equal(listed.length,3);
- await core.storage.setWorkspace(b.id);await core.workspaces.remove(a.id);assert.equal(await core.workspaces.get(a.id),null);
+ await core.storage.setWorkspace(b.id);assert.equal(await core.storage.acquireLease(),true);await core.workspaces.remove(a.id);assert.equal(await core.workspaces.get(a.id),null);
  await core.storage.close();console.log('PASS workspaces: isolated databases, local keys, registry lifecycle and non-destructive legacy archive');
 })().catch(e=>{console.error(e);process.exitCode=1;});

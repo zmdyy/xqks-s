@@ -126,6 +126,10 @@ async function capture(){
  if(typeof dataStartupPromise!=='undefined')await dataStartupPromise;
  if(typeof dataOperationBusy!=='undefined'&&dataOperationBusy)throw Error('请等待文件导入或保存完成');
  if(!AppCore.storage.workspaceId())throw Error('请先选择工作区');
+ AppCore.storage.assertLease();
+ if(root.seatingStore?.flush)await root.seatingStore.flush();
+ if(AppCore.storage.flush)await AppCore.storage.flush();
+ AppCore.storage.assertLease();
  if(root.flushPaperCropDraft&&!(await root.flushPaperCropDraft()))throw Error('切题修改保存失败，请先重试');
  if(document.getElementById('paperCropWorkspace'))throw Error('请先关闭切题复核窗口，再备份或恢复');
  const id=AppCore.storage.workspaceId(),dbName=AppCore.storage.databaseName(),databases=[];
@@ -173,6 +177,7 @@ async function readZip(bytes){
  return data;
 }
 async function writeAll(data,targetId){
+ AppCore.storage.assertLease();
  const saved=data.databases.find(d=>d.name==='ScoreAnalysisDB'||/^ScoreAnalysisDB_/.test(d.name));
  const targetName=AppCore.storage.databaseName(targetId);
  if(saved&&saved.stores.length)await putDB(Object.assign({},saved,{name:targetName}));
@@ -180,6 +185,7 @@ async function writeAll(data,targetId){
   const existing=await dumpDB(targetName);
   if(existing){existing.stores.forEach(s=>s.rows=[]);await putDB(existing);}
  }
+ AppCore.storage.assertLease();
  applyLocal(data.local,data.sourceWorkspaceId||null,targetId);
  DataPool.batches=data.batches;
  if(!await persistBatches())throw Error('成绩及原卷保存失败');

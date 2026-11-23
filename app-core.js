@@ -83,6 +83,7 @@
         catch (_) { return null; }
     })();
     let writeQueue = Promise.resolve();
+    let switchingWorkspace = false;
     let leaseWorkspaceId = null, leaseMode = null, leaseRelease = null, leaseTimer = null, leaseKey = null;
     const leaseOwner = 'tab_' + (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : Date.now() + '_' + Math.random().toString(16).slice(2));
     function validWorkspaceId(id) {
@@ -155,6 +156,19 @@
         }
         leaseWorkspaceId = null; leaseMode = null; leaseRelease = null; leaseKey = null;
     }
+    function assertLease() {
+        if (switchingWorkspace || !activeWorkspaceId || leaseWorkspaceId !== activeWorkspaceId || !leaseMode) throw new Error('当前工作区未取得有效编辑锁，请刷新页面或重新进入工作区后再保存');
+        if (leaseMode === 'local') {
+            let record;
+            try { record = JSON.parse(root.localStorage.getItem(leaseKey) || 'null'); }
+            catch (_) { releaseLease(); throw new Error('无法验证工作区编辑锁，请允许浏览器使用本站存储后重试'); }
+            if (!record || record.owner !== leaseOwner || !Number.isFinite(record.expiresAt) || record.expiresAt <= Date.now()) {
+                releaseLease();
+                throw new Error('工作区编辑锁已失效，可能已有其他页面接管。请刷新页面后重新进入工作区');
+            }
+        }
+        return true;
+    }
     async function acquireLease() {
         if (!activeWorkspaceId) throw new Error('请先选择工作区');
         if (leaseWorkspaceId === activeWorkspaceId) return true;
@@ -185,7 +199,7 @@
         try {
             const existing = JSON.parse(root.localStorage.getItem(key) || 'null');
             if (existing && existing.expiresAt > now && existing.owner !== leaseOwner) return false;
-            const record = {owner:leaseOwner, expiresAt:now + 15000};
+            const record = {owner:leaseOwner, expiresAt:now + 120000};
             root.localStorage.setItem(key, JSON.stringify(record));
             const check = JSON.parse(root.localStorage.getItem(key) || 'null');
             if (!check || check.owner !== leaseOwner) return false;
@@ -194,51 +208,59 @@
                 try {
                     const current = JSON.parse(root.localStorage.getItem(key) || 'null');
                     if (!current || current.owner !== leaseOwner) { releaseLease(); return; }
-                    root.localStorage.setItem(key, JSON.stringify({owner:leaseOwner, expiresAt:Date.now()+15000}));
+                    root.localStorage.setItem(key, JSON.stringify({owner:leaseOwner, expiresAt:Date.now()+120000}));
                 } catch (_) { releaseLease(); }
-            }, 5000);
+            }, 20000);
             return true;
         } catch (_) {
-            // Storage may be unavailable in privacy/file contexts. The workspace database
-            // remains isolated; callers should still show the browser's storage warning.
-            return true;
+            // Fail closed: without Web Locks or readable localStorage we cannot prevent
+            // a second tab from editing this same workspace safely.
+            releaseLease();
+            throw new Error('浏览器无法提供可靠的工作区编辑锁。请通过 localhost 或 HTTPS 打开，并允许本站使用本地存储');
         }
     }
     const storage = {
         read(key) { return transaction('readonly', key); },
         write(key, value) {
+            assertLease();
             const snapshot = clone(value);
-            const task = writeQueue.catch(() => {}).then(() => transaction('readwrite', key, snapshot));
+            const task = writeQueue.catch(() => {}).then(() => { assertLease(); return transaction('readwrite', key, snapshot); });
             writeQueue = task;
             return task;
         },
         localGet(key, fallback) { try { return root.localStorage.getItem(key) || fallback; } catch (_) { return fallback; } },
         localSet(key, value) { try { root.localStorage.setItem(key, value); return true; } catch (_) { return false; } },
         workspaceLocalGet(key, fallback) { try { return root.localStorage.getItem('xqks:' + activeWorkspaceId + ':' + key) || fallback; } catch (_) { return fallback; } },
-        workspaceLocalSet(key, value) { try { root.localStorage.setItem('xqks:' + activeWorkspaceId + ':' + key, value); return true; } catch (_) { return false; } },
+        workspaceLocalSet(key, value) { try { assertLease(); root.localStorage.setItem('xqks:' + activeWorkspaceId + ':' + key, value); return true; } catch (_) { return false; } },
         namespacePrefix(id) { const value = id || activeWorkspaceId; return value ? 'xqks:' + validWorkspaceId(value) + ':' : ''; },
         workspaceId() { return activeWorkspaceId; },
         databaseName(id) { return id ? databaseNameFor(id) : databaseName(); },
         async setWorkspace(id) {
             const next = validWorkspaceId(id);
             if (next === activeWorkspaceId) return next;
-            releaseLease();
-            await writeQueue.catch(() => {});
-            if (databasePromise) await databasePromise.catch(() => {});
-            if (databaseHandle) { try { databaseHandle.close(); } catch (_) {} databaseHandle = null; }
-            activeWorkspaceId = next;
-            databasePromise = null; databasePromiseName = null; writeQueue = Promise.resolve();
-            return next;
+            switchingWorkspace = true;
+            try {
+                await writeQueue.catch(() => {});
+                releaseLease();
+                if (databasePromise) await databasePromise.catch(() => {});
+                if (databaseHandle) { try { databaseHandle.close(); } catch (_) {} databaseHandle = null; }
+                activeWorkspaceId = next;
+                databasePromise = null; databasePromiseName = null; writeQueue = Promise.resolve();
+                return next;
+            } finally { switchingWorkspace = false; }
         },
         async close() {
-            releaseLease();
+            switchingWorkspace = true;
             await writeQueue.catch(() => {});
+            releaseLease();
             if (databasePromise) await databasePromise.catch(() => {});
             if (databaseHandle) { try { databaseHandle.close(); } catch (_) {} databaseHandle = null; }
             databasePromise = null; databasePromiseName = null;
         },
         acquireLease,
+        assertLease,
         releaseLease,
+        flush() { return writeQueue; },
         decode: decodeStored
     };
     if (root.addEventListener) root.addEventListener('beforeunload', releaseLease);
