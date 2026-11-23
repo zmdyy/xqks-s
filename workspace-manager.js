@@ -50,8 +50,8 @@ function renderWorkspaceCards(parent,items,mode,currentId){
   if(ws.legacyArchive)card.appendChild(el('div','workspace-archive-note','这是从旧版共享数据库复制的历史副本，尚未按年级拆分。原数据库仍保留，请勿把它当作已核实的年级数据。'));
   const actions=el('div','workspace-card-actions');
   const enter=el('button','',mode==='manage'?(ws.id===currentId?'当前工作区':'切换到此工作区'):'进入工作区');
-  enter.disabled=ws.id===currentId&&mode==='manage';
-  enter.onclick=()=>{if(mode==='manage')root.location.assign(urlFor(ws.id));else parent._choose(ws.id);};
+  enter.disabled=ws.id===currentId;
+   enter.onclick=()=>root.location.assign(urlFor(ws.id));
   actions.appendChild(enter);
   if(mode==='manage'){
    const rename=el('button','','重命名');rename.onclick=async()=>{const value=root.prompt('请输入新的工作区名称',ws.name||'');if(!value||!value.trim())return;try{await core.workspaces.update(ws.id,{name:value.trim()});openManager();}catch(e){root.alert(e.message);}};actions.appendChild(rename);
@@ -97,7 +97,7 @@ async function resolve(){
   let ws=await core.workspaces.get(id);
   if(!ws)ws=await core.workspaces.ensure(id,{name:'未命名工作区',grade:'待指定'});
   await core.storage.setWorkspace(id);
-  if(!await core.storage.acquireLease()){await showDuplicate(resolve,ws);return null;}
+  if(!await core.storage.acquireLease())return new Promise(resolvePromise=>showDuplicate(resolvePromise,ws));
   mountHeader(ws);return ws;
  }
  return new Promise(resolvePromise=>renderChooser(resolvePromise));

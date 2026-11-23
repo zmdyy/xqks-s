@@ -115,7 +115,8 @@
             request.onblocked = () => fail(new Error('工作区数据库正在被其他页面占用，请关闭旧页面后重试'));
             request.onsuccess = () => {
                 const db = request.result;
-                if (settled || activeWorkspaceId !== name.slice('ScoreAnalysisDB_'.length)) { db.close(); return; }
+                if (settled) { db.close(); return; }
+                if (activeWorkspaceId !== name.slice('ScoreAnalysisDB_'.length)) { db.close(); fail(new Error('工作区已切换，已取消旧页面的数据读取')); return; }
                 settled = true;
                 root.clearTimeout(timer);
                 databaseHandle = db;
@@ -223,6 +224,7 @@
             if (next === activeWorkspaceId) return next;
             releaseLease();
             await writeQueue.catch(() => {});
+            if (databasePromise) await databasePromise.catch(() => {});
             if (databaseHandle) { try { databaseHandle.close(); } catch (_) {} databaseHandle = null; }
             activeWorkspaceId = next;
             databasePromise = null; databasePromiseName = null; writeQueue = Promise.resolve();
@@ -231,6 +233,7 @@
         async close() {
             releaseLease();
             await writeQueue.catch(() => {});
+            if (databasePromise) await databasePromise.catch(() => {});
             if (databaseHandle) { try { databaseHandle.close(); } catch (_) {} databaseHandle = null; }
             databasePromise = null; databasePromiseName = null;
         },
@@ -355,8 +358,13 @@
             return archive;
         } finally { oldDb.close(); }
     }
+    function workspaceUrl(id) {
+        if (!root.location) return '?workspace=' + encodeURIComponent(validWorkspaceId(id));
+        const url = new URL(root.location.href); url.searchParams.set('workspace', validWorkspaceId(id)); return url.href;
+    }
     const workspaces = {
         create: createWorkspace,
+        urlFor: workspaceUrl,
         get: getWorkspace,
         list: listWorkspaces,
         update: updateWorkspace,
