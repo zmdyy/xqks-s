@@ -235,14 +235,14 @@
         return groups;
     }
     function createStore(storage, local, namespace) {
-        const prefix=namespace ? encodeURIComponent(namespace)+':' : '';
-        const registry=prefix+'seating_classes_v3',remembered=prefix+'seating_last_class_v3';
-        const journalKey=cls=>prefix+'seating_journal_v3:'+core.classKey(cls),stateKey=cls=>prefix+'seating_class_v3:'+core.classKey(cls);
+        const prefix=()=>{const value=typeof namespace==='function'?namespace():namespace;return value?encodeURIComponent(value)+':':'';};
+        const registryKey=()=>prefix()+'seating_classes_v3',rememberedKey=()=>prefix()+'seating_last_class_v3';
+        const journalKey=cls=>prefix()+'seating_journal_v3:'+core.classKey(cls),stateKey=cls=>prefix()+'seating_class_v3:'+core.classKey(cls);
         let queue=Promise.resolve();
         const getLocal=key=>{try{return JSON.parse(local.getItem(key)||'null')}catch(_){return null}};
         function register(cls) {
-            const list=getLocal(registry) || [];if(!list.includes(cls))list.push(cls);
-            try{local.setItem(registry,JSON.stringify(list))}catch(_){}
+            const list=getLocal(registryKey()) || [];if(!list.includes(cls))list.push(cls);
+            try{local.setItem(registryKey(),JSON.stringify(list))}catch(_){}
             return list;
         }
         function save(cls,snapshot,history) {
@@ -255,8 +255,8 @@
                 // A single class state points only at snapshots already committed.
                 for(const snap of journal.pending) await storage.write('seating_snapshot_v3:'+snap.id,snap);
                 await storage.write(stateKey(cls),record);
-                const storedClasses=await storage.read(registry) || [];
-                await storage.write(registry,Array.from(new Set([...storedClasses,...classes])));
+                const storedClasses=await storage.read(registryKey()) || [];
+                await storage.write(registryKey(),Array.from(new Set([...storedClasses,...classes])));
                 const current=getLocal(key);
                 if(current){const committed=new Set(journal.pending.map(s=>s.id));current.pending=current.pending.filter(s=>!committed.has(s.id));try{local.setItem(key,JSON.stringify(current))}catch(_){}}
                 return true;
@@ -280,11 +280,11 @@
             return entry.students ? core.clone(entry) : storage.read('seating_snapshot_v3:'+entry.id);
         }
         async function classes() {
-            let stored=[];try{stored=await storage.read(registry) || []}catch(_){}
-            return Array.from(new Set([...(getLocal(registry) || []),...stored]));
+            let stored=[];try{stored=await storage.read(registryKey()) || []}catch(_){}
+            return Array.from(new Set([...(getLocal(registryKey()) || []),...stored]));
         }
         return {save,load,snapshot,classes,flush:()=>queue,peek:cls=>getLocal(journalKey(cls))?.state || null,
-            remember(cls){try{local.setItem(remembered,cls)}catch(_){}},lastClass(){try{return local.getItem(remembered)}catch(_){return null}}};
+            remember(cls){try{local.setItem(rememberedKey(),cls)}catch(_){}},lastClass(){try{return local.getItem(rememberedKey())}catch(_){return null}}};
     }
     return {numeric,positiveRank,rankInfo,layer,rankMetrics,subjectMetrics,examSources,examMetrics,buildProfiles,complementDetails,reconcile,repairMap,validMap,validSeatLayout,layoutIds,addSeats,fillUnseated,groups,createStore};
 });

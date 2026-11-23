@@ -1,0 +1,24 @@
+name: Repository regression tests
+on:
+  push:
+    branches:
+      - fix/grade-workspace-isolation
+  pull_request:
+    branches:
+      - main
+jobs:
+  node-and-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit and integration tests
+        run: npm test
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Browser regression tests
+        run: npm run test:browser

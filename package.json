@@ -2,8 +2,8 @@
   "name": "xqks-s",
   "private": true,
   "scripts": {
-    "test": "node tests/core.test.cjs && node tests/seating.test.cjs && node tests/seating-academic.test.cjs && node tests/seating-layout.test.cjs && node tests/seating-dispersion.test.cjs && node tests/batch-save-selection.test.cjs && node tests/report-title-import.test.cjs && npm run test:paper:interaction",
-    "test:browser": "node tests/browser.test.cjs && node tests/seating-browser.test.cjs && node tests/seating-search-browser.test.cjs && node tests/seating-layout-browser.test.cjs",
+    "test": "node tests/core.test.cjs && node tests/workspaces.test.cjs && node tests/seating.test.cjs && node tests/seating-academic.test.cjs && node tests/seating-layout.test.cjs && node tests/seating-dispersion.test.cjs && node tests/batch-save-selection.test.cjs && node tests/report-title-import.test.cjs && npm run test:paper:interaction",
+    "test:browser": "node tests/browser.test.cjs && node tests/seating-browser.test.cjs && node tests/seating-search-browser.test.cjs && node tests/seating-layout-browser.test.cjs && node tests/workspace-isolation-browser.test.cjs",
     "test:paper": "node tests/paper-crop-engine.test.cjs && node tests/notebook-score-filter.test.cjs && node tests/notebook-shared-crops.test.cjs && node tests/notebook-candidate-anchors.test.cjs && node tests/paper-review-host.test.cjs",
     "test:paper:dom": "node tests/paper-crop-workspace-dom.test.mjs",
     "test:batch": "node tests/batch-save-selection.test.cjs",

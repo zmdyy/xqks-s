@@ -11,9 +11,16 @@ function buildSeatingProfiles(className, academic) {
         Object.assign({},academic || (seatingModuleInstance?.className===className?seatingModuleInstance.advancedSettings.academic:{}),{currentBatchId:DataPool.currentBatchId}));
 }
 var seatingStore = SeatingData.createStore(AppCore.storage, {
-    getItem: function(key) { return window.localStorage.getItem(key); },
-    setItem: function(key, value) { window.localStorage.setItem(key, value); }
-}, window.location.pathname.replace(/[^/]*$/, ''));
+    getItem: function(key) {
+        var scoped = AppCore.storage.namespacePrefix() + key;
+        try {
+            var value = window.localStorage.getItem(scoped);
+            if (value == null && AppCore.storage.workspaceId() === 'legacy-archive') value = window.localStorage.getItem(key);
+            return value;
+        } catch (_) { return null; }
+    },
+    setItem: function(key, value) { AppCore.storage.assertLease(); window.localStorage.setItem(AppCore.storage.namespacePrefix() + key, value); }
+}, function() { return window.location.pathname.replace(/[^/]*$/, ''); });
 var seatingLoadEpoch = 0;
 
 // ============================================================
