@@ -312,6 +312,8 @@
         const value = validWorkspaceId(id);
         if (value === activeWorkspaceId) throw new Error('不能删除当前正在使用的工作区，请先切换到其他工作区');
         await deleteDatabase(databaseNameFor(value));
+        const prefix = 'xqks:' + value + ':';
+        try { for (let i = root.localStorage.length - 1; i >= 0; i--) { const key = root.localStorage.key(i); if (key && key.startsWith(prefix)) root.localStorage.removeItem(key); } } catch (_) {}
         await registryRequest('readwrite', store => store.delete(value));
         return true;
     }

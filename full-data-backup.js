@@ -175,7 +175,7 @@ async function readZip(bytes){
 async function writeAll(data,targetId){
  const saved=data.databases.find(d=>d.name==='ScoreAnalysisDB'||/^ScoreAnalysisDB_/.test(d.name));
  const targetName=AppCore.storage.databaseName(targetId);
- if(saved)await putDB(Object.assign({},saved,{name:targetName}));
+ if(saved&&saved.stores.length)await putDB(Object.assign({},saved,{name:targetName}));
  else{
   const existing=await dumpDB(targetName);
   if(existing){existing.stores.forEach(s=>s.rows=[]);await putDB(existing);}
