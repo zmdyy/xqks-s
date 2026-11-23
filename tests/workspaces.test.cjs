@@ -16,7 +16,7 @@ async function put(db,key,value){await new Promise((resolve,reject)=>{const tx=d
  await core.storage.setWorkspace(b.id);assert.equal(await core.storage.read('scoreBatches'),undefined);await core.storage.write('scoreBatches',{batches:[{id:'b'}]});
  await core.storage.setWorkspace(a.id);assert.equal((await core.storage.read('scoreBatches')).batches[0].id,'a');
  assert.notEqual(core.storage.databaseName(a.id),core.storage.databaseName(b.id));
- core.storage.workspaceLocalSet('seating:test','a');await core.storage.setWorkspace(b.id);assert.equal(core.storage.workspaceLocalGet('seating:test'),null);
+ core.storage.workspaceLocalSet('seating:test','a');await core.storage.setWorkspace(b.id);assert.equal(core.storage.workspaceLocalGet('seating:test'),undefined);
  await core.storage.setWorkspace(a.id);assert.equal(core.storage.workspaceLocalGet('seating:test'),'a');
  const listed=await core.workspaces.list();assert.equal(listed.length,3);
  await core.storage.setWorkspace(b.id);await core.workspaces.remove(a.id);assert.equal(await core.workspaces.get(a.id),null);
