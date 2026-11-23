@@ -251,11 +251,13 @@
         },
         async close() {
             switchingWorkspace = true;
-            await writeQueue.catch(() => {});
-            releaseLease();
-            if (databasePromise) await databasePromise.catch(() => {});
-            if (databaseHandle) { try { databaseHandle.close(); } catch (_) {} databaseHandle = null; }
-            databasePromise = null; databasePromiseName = null;
+            try {
+                await writeQueue.catch(() => {});
+                releaseLease();
+                if (databasePromise) await databasePromise.catch(() => {});
+                if (databaseHandle) { try { databaseHandle.close(); } catch (_) {} databaseHandle = null; }
+                databasePromise = null; databasePromiseName = null;
+            } finally { switchingWorkspace = false; }
         },
         acquireLease,
         assertLease,
