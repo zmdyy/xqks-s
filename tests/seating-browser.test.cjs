@@ -12,7 +12,7 @@ const root=path.resolve(__dirname,'..');
     const url='http://127.0.0.1:'+server.address().port,dir=fs.mkdtempSync(path.join(os.tmpdir(),'seating-regression-'));
     const launch=()=>chromium.launchPersistentContext(dir,{headless:true,viewport:{width:1600,height:1100},...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE}:{}),args:process.env.CHROMIUM_ARGS?JSON.parse(process.env.CHROMIUM_ARGS):['--no-sandbox']});
     let context=await launch();const errors=[];
-    async function open(){const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());await page.goto(url);await page.waitForFunction(()=>!dataOperationBusy);return page;}
+    async function open(){const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());await page.goto(url+'/?workspace=seating-browser-test');await page.waitForFunction(()=>!dataOperationBusy);return page;}
     async function settled(page){await page.evaluate(async()=>{if(seatingModuleInstance?.pendingSave)await seatingModuleInstance.pendingSave;await seatingStore.flush().catch(()=>{})});}
     try {
         let page=await open();

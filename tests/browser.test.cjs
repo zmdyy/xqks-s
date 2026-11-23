@@ -31,7 +31,7 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         await page.route('**/reports.js',async route=>{await new Promise(r=>setTimeout(r,120));await route.continue()});
         await page.route('**/class-comparison.js',async route=>{await new Promise(r=>setTimeout(r,40));await route.continue()});
         await page.route('**/seating.js',async route=>{await new Promise(r=>setTimeout(r,80));await route.continue()});
-        await page.goto(url); await page.waitForFunction(()=>!document.getElementById('mainImportBtn').disabled);
+        await page.goto(url + '/?workspace=browser-test'); await page.waitForFunction(()=>!document.getElementById('mainImportBtn').disabled);
         async function chooseFiles(button, files) {
             const chooser = page.waitForEvent('filechooser');
             await page.click(button); await (await chooser).setFiles(files);

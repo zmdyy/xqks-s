@@ -9,7 +9,7 @@ const root=path.resolve(__dirname,'..');
  try{
   const page=await browser.newPage({viewport:{width:1600,height:1100}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
-  await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForFunction(()=>!dataOperationBusy);
+  await page.goto('http://127.0.0.1:'+server.address().port+'/?workspace=seating-layout-test');await page.waitForFunction(()=>!dataOperationBusy);
   await page.evaluate(async()=>{
    window.showAlert=()=>{};
    allSubjectHeaders=[{name:'总分'},{name:'数学'},{name:'英语'},{name:'英语合'},{name:'英语听说'},{name:'英语笔试'}];
