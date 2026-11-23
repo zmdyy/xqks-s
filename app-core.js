@@ -308,9 +308,26 @@
         const gradeName = text(meta.grade || '');
         const name = text(meta.name) || [year, gradeName].filter(Boolean).join(' · ') || '未命名工作区';
         const record = Object.assign({}, meta, {id, name, academicYear:year, grade:gradeName, createdAt:meta.createdAt || new Date().toISOString(), updatedAt:new Date().toISOString()});
-        const existing = await registryRequest('readonly', store => store.get(id));
-        if (existing) throw new Error('工作区编号已存在');
-        await registryRequest('readwrite', store => store.add(record));
+        const db = await openRegistry();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction('workspaces', 'readwrite'), store = tx.objectStore('workspaces');
+            let duplicate = false;
+            const list = store.getAll();
+            list.onsuccess = () => {
+                if (!meta.restoredFromWorkspaceId && year && gradeName &&
+                    (list.result || []).some(item => item.academicYear === year && item.grade === gradeName)) {
+                    duplicate = true;
+                    tx.abort();
+                    return;
+                }
+                store.add(record);
+            };
+            list.onerror = () => { try { tx.abort(); } catch (_) {} };
+            tx.oncomplete = resolve;
+            tx.onabort = tx.onerror = () => reject(duplicate
+                ? new Error('该学年和年级的工作区已存在，请直接进入现有工作区；如需恢复备份，请使用“恢复到新工作区”')
+                : tx.error || new Error('创建工作区失败'));
+        });
         return record;
     }
     async function getWorkspace(id) {
