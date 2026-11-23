@@ -376,25 +376,19 @@
     }
     async function migrateLegacyArchive() {
         const existing = await getWorkspace('legacy-archive');
-        if (existing) return existing;
+        if (existing && existing.legacyArchiveReady) return existing;
         const oldDb = await openExistingLegacyDatabase();
-        if (!oldDb) return null;
+        if (!oldDb) return existing || null;
         try {
-            if (!oldDb.objectStoreNames.contains('batches')) return null;
+            if (!oldDb.objectStoreNames.contains('batches')) return existing || null;
             const records = await new Promise((resolve, reject) => {
                 const tx = oldDb.transaction('batches', 'readonly'), req = tx.objectStore('batches').getAll();
                 req.onsuccess = () => resolve(req.result || []);
                 req.onerror = () => reject(req.error || new Error('读取旧版数据失败'));
             });
-            let archive;
-            try {
-                archive = await createWorkspace({id:'legacy-archive',name:'历史数据（待整理）',grade:'待整理',legacyArchive:true,description:'从旧版共享数据库复制；原始数据库保持不变。'});
-            } catch (error) {
-                archive = await getWorkspace('legacy-archive');
-                if (!archive) throw error;
-            }
+            const archiveId = 'legacy-archive';
             const target = await new Promise((resolve, reject) => {
-                const req = root.indexedDB.open(databaseNameFor(archive.id), 1);
+                const req = root.indexedDB.open(databaseNameFor(archiveId), 1);
                 req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains('batches')) req.result.createObjectStore('batches', {keyPath:'key'}); };
                 req.onsuccess = () => resolve(req.result);
                 req.onerror = () => reject(req.error || new Error('创建历史数据副本失败'));
@@ -403,12 +397,19 @@
             try {
                 await new Promise((resolve, reject) => {
                     const tx = target.transaction('batches','readwrite'), store = tx.objectStore('batches');
+                    store.clear();
                     records.forEach(row => store.put(row));
                     tx.oncomplete = resolve;
                     tx.onabort = tx.onerror = () => reject(tx.error || new Error('复制历史数据失败'));
                 });
             } finally { target.close(); }
-            return archive;
+            const meta = {
+                id:archiveId,name:'历史数据（待整理）',grade:'待整理',legacyArchive:true,legacyArchiveReady:true,
+                description:'从旧版共享数据库复制；原始数据库保持不变。'
+            };
+            if (existing) return await updateWorkspace(archiveId, {legacyArchive:true,legacyArchiveReady:true});
+            try { return await createWorkspace(meta); }
+            catch (error) { const raced = await getWorkspace(archiveId); if (raced) return raced; throw error; }
         } finally { oldDb.close(); }
     }
     let legacyArchivePromise;

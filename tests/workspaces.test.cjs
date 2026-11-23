@@ -8,7 +8,7 @@ async function openLegacy(){return new Promise((resolve,reject)=>{const r=indexe
 async function put(db,key,value){await new Promise((resolve,reject)=>{const tx=db.transaction('batches','readwrite');tx.objectStore('batches').put({key,value});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});}
 (async()=>{
  const legacy=await openLegacy();await put(legacy,'scoreBatches',{batches:[{id:'old',combinedStudentData:[{name:'历史学生'}]}]});legacy.close();
- const archive=await core.workspaces.ensureLegacyArchive();assert.equal(archive.id,'legacy-archive');assert.equal(archive.legacyArchive,true);
+ const archive=await core.workspaces.ensureLegacyArchive();assert.equal(archive.id,'legacy-archive');assert.equal(archive.legacyArchive,true);assert.equal(archive.legacyArchiveReady,true);assert.equal((await core.workspaces.ensureLegacyArchive()).id,'legacy-archive');
  await core.storage.setWorkspace(archive.id);const copied=await core.storage.read('scoreBatches');assert.equal(copied.batches[0].id,'old');
  const oldAgain=await openLegacy();const oldRows=await new Promise((resolve,reject)=>{const r=oldAgain.transaction('batches','readonly').objectStore('batches').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});assert.equal(oldRows[0].value.batches[0].id,'old');oldAgain.close();
  const a=await core.workspaces.create({academicYear:'2026—2027',grade:'八年级'}),b=await core.workspaces.create({academicYear:'2026—2027',grade:'九年级'});await assert.rejects(()=>core.workspaces.create({academicYear:'2026—2027',grade:'八年级'}),/工作区已存在/);
