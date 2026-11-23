@@ -156,8 +156,8 @@
         }
         leaseWorkspaceId = null; leaseMode = null; leaseRelease = null; leaseKey = null;
     }
-    function assertLease() {
-        if (switchingWorkspace || !activeWorkspaceId || leaseWorkspaceId !== activeWorkspaceId || !leaseMode) throw new Error('当前工作区未取得有效编辑锁，请刷新页面或重新进入工作区后再保存');
+    function assertLeaseHeld() {
+        if (!activeWorkspaceId || leaseWorkspaceId !== activeWorkspaceId || !leaseMode) throw new Error('当前工作区未取得有效编辑锁，请刷新页面或重新进入工作区后再保存');
         if (leaseMode === 'local') {
             let record;
             try { record = JSON.parse(root.localStorage.getItem(leaseKey) || 'null'); }
@@ -168,6 +168,10 @@
             }
         }
         return true;
+    }
+    function assertLease() {
+        if (switchingWorkspace) throw new Error('正在切换工作区，请稍后再保存');
+        return assertLeaseHeld();
     }
     async function acquireLease() {
         if (!activeWorkspaceId) throw new Error('请先选择工作区');
@@ -224,7 +228,7 @@
         write(key, value) {
             assertLease();
             const snapshot = clone(value);
-            const task = writeQueue.catch(() => {}).then(() => { assertLease(); return transaction('readwrite', key, snapshot); });
+            const task = writeQueue.catch(() => {}).then(() => { assertLeaseHeld(); return transaction('readwrite', key, snapshot); });
             writeQueue = task;
             return task;
         },
