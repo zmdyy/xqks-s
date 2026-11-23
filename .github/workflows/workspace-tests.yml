@@ -19,6 +19,6 @@ jobs:
       - name: Unit and integration tests
         run: npm test
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Browser regression tests
         run: npm run test:browser
