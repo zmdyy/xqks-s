@@ -329,7 +329,7 @@
             };
         });
     }
-    async function ensureLegacyArchive() {
+    async function migrateLegacyArchive() {
         const existing = await getWorkspace('legacy-archive');
         if (existing) return existing;
         const oldDb = await openExistingLegacyDatabase();
@@ -341,7 +341,13 @@
                 req.onsuccess = () => resolve(req.result || []);
                 req.onerror = () => reject(req.error || new Error('读取旧版数据失败'));
             });
-            const archive = await createWorkspace({id:'legacy-archive',name:'历史数据（待整理）',grade:'待整理',legacyArchive:true,description:'从旧版共享数据库复制；原始数据库保持不变。'});
+            let archive;
+            try {
+                archive = await createWorkspace({id:'legacy-archive',name:'历史数据（待整理）',grade:'待整理',legacyArchive:true,description:'从旧版共享数据库复制；原始数据库保持不变。'});
+            } catch (error) {
+                archive = await getWorkspace('legacy-archive');
+                if (!archive) throw error;
+            }
             const target = await new Promise((resolve, reject) => {
                 const req = root.indexedDB.open(databaseNameFor(archive.id), 1);
                 req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains('batches')) req.result.createObjectStore('batches', {keyPath:'key'}); };
@@ -360,6 +366,17 @@
             return archive;
         } finally { oldDb.close(); }
     }
+    let legacyArchivePromise;
+    function ensureLegacyArchive() {
+        if (legacyArchivePromise) return legacyArchivePromise;
+        if (root.navigator && root.navigator.locks && typeof root.navigator.locks.request === 'function') {
+            try {
+                legacyArchivePromise = root.navigator.locks.request('xqks-legacy-archive-migration', {mode:'exclusive'}, migrateLegacyArchive);
+            } catch (_) { legacyArchivePromise = migrateLegacyArchive(); }
+        } else legacyArchivePromise = migrateLegacyArchive();
+        legacyArchivePromise = legacyArchivePromise.catch(error => { legacyArchivePromise = null; throw error; });
+        return legacyArchivePromise;
+    }
     function workspaceUrl(id) {
         if (!root.location) return '?workspace=' + encodeURIComponent(validWorkspaceId(id));
         const url = new URL(root.location.href); url.searchParams.set('workspace', validWorkspaceId(id)); return url.href;
@@ -371,7 +388,12 @@
         list: listWorkspaces,
         update: updateWorkspace,
         remove: removeWorkspace,
-        ensure(id, meta) { return getWorkspace(id).then(found => found || createWorkspace(Object.assign({}, meta || {}, {id}))); },
+        async ensure(id, meta) {
+            const found = await getWorkspace(id);
+            if (found) return found;
+            try { return await createWorkspace(Object.assign({}, meta || {}, {id})); }
+            catch (error) { const raced = await getWorkspace(id); if (raced) return raced; throw error; }
+        },
         ensureLegacyArchive
     };
     function parseWorkbook(buffer) {

@@ -91,8 +91,8 @@ function renderChooser(resolve){
  }).catch(error=>{const panel=shell('无法读取工作区','工作区目录读取失败：'+error.message+'。请确认浏览器允许本站使用 IndexedDB。');});
 }
 async function resolve(){
- await core.workspaces.ensureLegacyArchive();
  const id=core.storage.workspaceId();
+ if(!id)await core.workspaces.ensureLegacyArchive();
  if(id){
   let ws=await core.workspaces.get(id);
   if(!ws)ws=await core.workspaces.ensure(id,{name:'未命名工作区',grade:'待指定'});
