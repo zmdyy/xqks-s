@@ -26,4 +26,6 @@ const prior=w.DataPool.batches;let calls=0;w.persistBatches=async()=>++calls>1?p
 // Restoring a current-format ZIP defaults to a new isolated workspace, not the open one.
 const fresh=await api.restore(restored,{navigate:false});assert.notEqual(fresh.id,'backup-test');assert.equal(w.AppCore.storage.workspaceId(),fresh.id);assert.equal(w.DataPool.batches.length,1);
 const originalDb=await api.dumpDB('ScoreAnalysisDB_backup-test');const originalRows=originalDb.stores.find(s=>s.name==='batches').rows.find(r=>r.key==='scoreBatches').value.value;assert.equal((Array.isArray(originalRows)?originalRows:originalRows.batches).length,2);
+// A legacy V1 backup without workspace metadata still restores to a new workspace, even if that grade already exists.
+const legacyV1={...restored,version:1};delete legacyV1.workspaceMeta;delete legacyV1.sourceWorkspaceId;const legacyCopy=await api.restore(legacyV1,{workspaceMeta:{academicYear:'2026—2027',grade:'八年级',name:'V1旧备份恢复'},navigate:false});assert.notEqual(legacyCopy.id,'backup-test');assert.equal((await w.AppCore.workspaces.get(legacyCopy.id)).restoredFromBackup,true);
 db.close();await w.happyDOM.close();console.log('Full ZIP roundtrip, PDF/figures/layout/crops, independent bank preservation, secrets exclusion, standalone repeat, integrity and rollback passed.');

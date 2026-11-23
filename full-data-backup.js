@@ -199,7 +199,7 @@ async function restore(data,options){
   const source=options.workspaceMeta||data.workspaceMeta;
   if(!source||!source.academicYear||!source.grade)throw Error('备份缺少学年或年级信息，请先指定恢复归属');
   const baseName=source.name||[source.academicYear,source.grade].filter(Boolean).join(' · ');
-  targetMeta=await AppCore.workspaces.create({academicYear:source.academicYear,grade:source.grade,name:(baseName||'恢复工作区')+'（恢复）',restoredFromWorkspaceId:data.sourceWorkspaceId||source.id||null});
+  targetMeta=await AppCore.workspaces.create({academicYear:source.academicYear,grade:source.grade,name:(baseName||'恢复工作区')+'（恢复）',restoredFromWorkspaceId:data.sourceWorkspaceId||source.id||null,restoredFromBackup:true});
   targetId=targetMeta.id;
  }else before=await capture();
  try{

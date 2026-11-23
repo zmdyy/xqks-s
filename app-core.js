@@ -314,7 +314,7 @@
             let duplicate = false;
             const list = store.getAll();
             list.onsuccess = () => {
-                if (!meta.restoredFromWorkspaceId && year && gradeName &&
+                if (!meta.restoredFromWorkspaceId && !meta.restoredFromBackup && year && gradeName &&
                     (list.result || []).some(item => item.academicYear === year && item.grade === gradeName)) {
                     duplicate = true;
                     tx.abort();
