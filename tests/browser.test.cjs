@@ -90,77 +90,9 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
             await page.click('[data-tab="'+tab+'"]'); await page.waitForTimeout(160);
         }
         await page.click('[data-tab="tab-personal"]');
-        const personalClass = page.locator('#personalClassFilter');
-        const personalSummary = page.locator('#rankingTableOutput .info-section');
-        const personalRows = page.locator('#rankingTableOutput tbody tr');
-        const nameInput = page.locator('#nameSearch');
-        const personalNames = page.locator('#nameSearchSuggest .student-suggest-name');
-        const personalToolbar = page.locator('#personalToolbar');
-        const toolbarGeometry = () => personalToolbar.evaluate(toolbar => {
-            const centers = Array.from(toolbar.children, child => {
-                const rect = child.getBoundingClientRect();
-                return rect.top + rect.height / 2;
-            });
-            return {
-                spread: Math.max(...centers) - Math.min(...centers),
-                overflow: toolbar.scrollWidth - toolbar.clientWidth
-            };
-        });
-        for (const width of [1920, 1515, 1440, 1280]) {
-            await page.setViewportSize({width,height:1000});
-            const {spread, overflow} = await toolbarGeometry();
-            assert.ok(spread <= 1 && overflow <= 1, `at ${width}px personal controls should fit one line: ${spread}, ${overflow}`);
-        }
-        await page.setViewportSize({width:390,height:1000});
-        const narrow = await toolbarGeometry();
-        assert.ok(narrow.spread <= 1 && narrow.overflow > 0, 'on narrow screens the toolbar should scroll horizontally');
-        await nameInput.fill('同名');
-        await personalNames.first().waitFor();
-        assert.equal(await personalNames.first().evaluate(item => {
-            const rect = item.getBoundingClientRect();
-            return Boolean(document.elementFromPoint(rect.left + 4, rect.top + 4)?.closest('#nameSearchSuggest'));
-        }), true, 'the name menu must be clickable below the scrolling toolbar');
-        await personalToolbar.evaluate(toolbar => { toolbar.scrollLeft = toolbar.scrollWidth; });
-        await page.locator('#nameSearchSuggest').waitFor({state:'hidden'});
-        await nameInput.fill('');
-        await page.setViewportSize({width:1440,height:1000});
-        await personalToolbar.evaluate(toolbar => { toolbar.scrollLeft = 0; });
-        assert.deepEqual(await page.locator('#rankType option').allTextContents(), ['年级','全校','班内']);
-        assert.deepEqual(await personalClass.locator('option').allTextContents(), ['全部班级','01班','02班']);
-        assert.equal(await personalRows.count(), 5);
-        await personalClass.selectOption({label:'02班'});
-        assert.deepEqual(await personalRows.locator('td:nth-child(3)').allTextContents(), ['02班','02班']);
-        assert.deepEqual(await personalRows.locator('td:first-child').allTextContents(), ['1','4']);
-        assert.match(await personalSummary.textContent(), /02班 · 按级名排序/);
-        await page.fill('#rankEnd', '1');
-        await page.click('#filterBtn');
-        assert.equal(await personalRows.count(), 1);
-        await page.fill('#rankEnd', '20');
-        await page.selectOption('#rankType', '班名');
-        await page.click('#filterBtn');
-        assert.deepEqual(await personalRows.locator('td:first-child').allTextContents(), ['1','2']);
-        await page.selectOption('#rankType', '级名');
-        await nameInput.fill('同名');
-        assert.deepEqual(await personalNames.allTextContents(), ['同名(b)']);
-        await personalNames.click();
-        assert.deepEqual(await personalRows.locator('td:nth-child(3)').allTextContents(), ['02班','02班']);
-        const analysis = JSON.parse(await page.locator('#analysisDataContent').textContent());
-        assert.equal(analysis.class, '02班');
-        assert.equal(analysis.subjects['总分'].score, 100);
-        assert.equal(analysis.rankingPopulations.gradePopulation, 5);
-        assert.match(await personalSummary.textContent(), /总分级名第 1 名/);
-        await nameInput.fill('赵六');
-        await nameInput.press('Enter');
-        assert.match(await personalSummary.textContent(), /总分级名第 4 名/);
-        assert.equal(await personalRows.locator('td.search-highlight').first().locator('.rank-display').textContent(), '赵六');
-        await personalClass.selectOption({label:'01班'});
-        assert.equal(await nameInput.inputValue(), '');
-        assert.equal(await personalRows.count(), 3);
-        assert.ok(await page.locator('#rankStart').isEnabled());
-        await page.locator('#nameSearch').locator('..').locator('.student-search-toggle').click();
-        assert.deepEqual((await personalNames.allTextContents()).sort(), ['同名(a)','李四','王五'].sort());
-        await personalClass.selectOption({label:'全部班级'});
-        assert.equal(await personalRows.count(), 5);
+        assert.deepEqual(await page.locator('#tab-personal .controls label').allTextContents(), ['学生姓名：','排名范围：','排名类型：']);
+        assert.deepEqual(await page.locator('#rankType option').allTextContents(), ['级名','校名','班名']);
+        assert.equal(await page.locator('#personalClassFilter').count(), 0);
         await page.click('[data-tab="tab-collective"]');
         await page.selectOption('#collectiveSubjectFilter','物理'); await page.waitForTimeout(160);
         assert.ok(await page.evaluate(()=>document.getElementById('collectiveHeatmapChart').querySelector('svg')),'heatmap must draw');
@@ -349,13 +281,8 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         await page.locator('#classDiffBatchPicker input[value="top-ten-next"]').check();
         assert.equal((await getRanks(3)).length, 11, 'comparison batches must not feed the top-ten table');
         await classChoice.selectOption({label:'02班'});
-        await page.click('[data-tab="tab-personal"]');
-        await personalClass.selectOption({label:'02班'});
         await page.click('[data-tab="tab-upload"]');
         await page.selectOption('#batchSelector', 'top-ten-next');
-        await page.click('[data-tab="tab-personal"]');
-        assert.deepEqual(await personalClass.locator('option').allTextContents(), ['全部班级','03班']);
-        assert.equal(await personalClass.inputValue(), '');
         await page.click('[data-tab="tab-class-diff"]');
         assert.deepEqual(await classChoice.locator('option').allTextContents(), ['全部班级','03班']);
         assert.equal(await classChoice.inputValue(), '');
@@ -363,6 +290,6 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.deepEqual(await getRanks(1), [], 'missing total must not be inferred from subjects');
         assert.deepEqual(await getRanks(2), ['1']);
         assert.deepEqual(errors,[],'browser uncaught exceptions');
-        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, one-line personal toolbar, personal class filter, class top ten compact/detail and 4x PNG export, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
+        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, original personal toolbar, class top ten compact/detail and 4x PNG export, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
     } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(error=>{console.error(error);process.exitCode=1});
