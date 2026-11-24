@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>学情可视化展板</title>
     <link rel="preload" href="reports.js" as="script">
-    <link rel="preload" href="class-comparison.js" as="script">
+    <link rel="preload" href="class-comparison.js?v=subject-top-ten" as="script">
     <link rel="preload" href="seating.js" as="script">
     <link rel="preload" href="seating-data.js" as="script">
     <link rel="preload" href="seating-engine.js" as="script">
-    <link rel="stylesheet" href="app.css?v=workspace-entry">
+    <link rel="stylesheet" href="app.css?v=subject-top-ten">
     <script src="app-core.js"></script>
     <script src="workspace-manager.js?v=workspace-entry"></script>
     <script src="echarts.min.js"></script>
@@ -180,6 +180,7 @@
             <button type="button" class="analysis-nav-item" data-analysis-target="classDiffHeatmapSection">得分率热力图</button>
             <button type="button" class="analysis-nav-item" data-analysis-target="classDiffGradeSection">等级分布统计</button>
             <button type="button" class="analysis-nav-item" data-analysis-target="classDiffRankSection">排序与名次段</button>
+            <button type="button" class="analysis-nav-item" data-analysis-target="classDiffTopTenSection">各科前十</button>
             <button type="button" class="analysis-nav-item" data-analysis-target="classDiffBoxSection">成绩分布箱线图</button>
             <button type="button" class="analysis-nav-item analysis-nav-top" data-analysis-top="true">↑ 回到顶部</button>
         </nav>
@@ -277,6 +278,21 @@
         </div>
         <div class="distribution-extra-charts" id="classDiffDistributionExtraCharts" style="display:flex;flex-wrap:wrap;gap:30px;margin-top:20px;"></div>
     </div>
+
+    <section class="statistics-section analysis-anchor-section" id="classDiffTopTenSection" data-analysis-section="classDiffTopTenSection" aria-labelledby="classDiffTopTenTitle" style="display:none;">
+        <div class="class-top-ten-toolbar">
+            <h3 id="classDiffTopTenTitle">各科前十</h3>
+            <label for="classDiffTopTenClass">班级</label>
+            <select id="classDiffTopTenClass"><option value="">全部班级</option></select>
+            <span id="classDiffTopTenSummary" class="class-top-ten-summary" role="status"></span>
+        </div>
+        <div class="scroll-container class-top-ten-scroll" tabindex="0" role="region" aria-labelledby="classDiffTopTenTitle">
+            <table class="class-top-ten-table" id="classDiffTopTenTable" aria-labelledby="classDiffTopTenTitle">
+                <thead></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </section>
 
     <!-- 成绩分布箱线图 -->
     <div class="statistics-section analysis-anchor-section" id="classDiffBoxSection" data-analysis-section="classDiffBoxSection" style="display:none;margin-top:16px;">
@@ -1112,7 +1128,7 @@
 </div>
 
 <script src="reports.js"></script>
-<script src="class-comparison.js"></script>
+<script src="class-comparison.js?v=subject-top-ten"></script>
 <script src="seating-data.js"></script>
 <script src="seating-engine.js"></script>
 <script src="seating.js"></script>

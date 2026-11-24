@@ -56,6 +56,7 @@ function getClassDiffSelectedBatches() {
 }
 
 function renderClassDiffAll() {
+    renderClassDiffTopTen();
     if (!combinedStudentData.length || !getMergedSubjectNames(combinedStudentData, allSubjectHeaders).length) {
         document.getElementById('classDiffMeanSection').style.display = 'none';
         document.getElementById('classDiffGradeSection').style.display = 'none';
@@ -822,6 +823,102 @@ function renderClassDiffGradeChart(selectedSubjectName, stats, classNames, grade
 }
 document.getElementById('classDiffGradeExportBtn').addEventListener('click', exportClassDiffGradeSubjectImage);
 
+function rankClassDiffScores(students, getScore) {
+    const entries = students.map(student => ({ student, score: getScore(student) }))
+        .filter(entry => Number.isFinite(entry.score))
+        .sort((a, b) => b.score - a.score);
+    let rank = 1;
+    return entries.map((entry, index) => {
+        if (index && entry.score !== entries[index - 1].score) rank = index + 1;
+        return { ...entry, rank };
+    });
+}
+
+function getClassDiffTopTenSubjects(students, headers) {
+    const score = (student, subject) => AppCore.number(student.subjects?.[subject]?.score);
+    const names = getMergedSubjectNames(students, headers)
+        .filter(name => students.some(student => Number.isFinite(score(student, name))));
+
+    const total = names.find(name => name === '总分')
+        || names.find(name => /^(总分|总成绩|(考试|全科|综合|学科|文化课?|年级|原始|折算|赋分)总分)/.test(name));
+    const englishParts = name => /^(英语(笔试|听说|听力|口语)|听说|听力|口语)$/.test(name);
+    const englishTotals = names.filter(name => /^英语(合并|总分|合)$/.test(name));
+    if (names.includes('英语') && (!names.some(englishParts) || names.includes('英语笔试')
+        || resolveAmbiguousEnglishFullMark(students) === 100)) {
+        englishTotals.push('英语');
+    }
+
+    const columns = [{ label: '总分', score: student => total ? score(student, total) : '' }];
+    let englishShown = false;
+    for (const name of names) {
+        if (name === total) continue;
+        if (englishTotals.length && (name === '英语' || englishTotals.includes(name) || englishParts(name))) {
+            if (!englishShown) {
+                columns.push({ label: '英语', score: student => {
+                    for (const subject of englishTotals) {
+                        const value = score(student, subject);
+                        if (Number.isFinite(value)) return value;
+                    }
+                    return '';
+                }});
+                englishShown = true;
+            }
+        } else {
+            columns.push({ label: name, score: student => score(student, name) });
+        }
+    }
+    return columns;
+}
+
+function renderClassDiffTopTen() {
+    const section = document.getElementById('classDiffTopTenSection');
+    const classSelect = document.getElementById('classDiffTopTenClass');
+    const previous = classSelect.value;
+    const classes = new Map();
+    for (const student of combinedStudentData) {
+        const key = AppCore.classKey(student.class);
+        if (key) classes.set(key, normalizeClassName(student.class));
+    }
+    const classOptions = Array.from(classes).sort((a, b) =>
+        a[1].localeCompare(b[1], 'zh-CN', { numeric: true }));
+    classSelect.replaceChildren(new Option('全部班级', ''),
+        ...classOptions.map(([key, label]) => new Option(label, key)));
+    classSelect.value = classes.has(previous) ? previous : '';
+
+    section.style.display = combinedStudentData.length ? 'block' : 'none';
+    const students = classSelect.value
+        ? combinedStudentData.filter(student => AppCore.classKey(student.class) === classSelect.value)
+        : combinedStudentData;
+    const columns = getClassDiffTopTenSubjects(combinedStudentData, allSubjectHeaders)
+        .map(column => ({ label: column.label, entries: rankClassDiffScores(students, column.score)
+            .filter(entry => entry.rank <= 10) }));
+    const rowCount = Math.max(...columns.map(column => column.entries.length));
+    const showClass = !classSelect.value && classes.size > 1;
+    const table = document.getElementById('classDiffTopTenTable');
+
+    table.tHead.innerHTML = `<tr>${columns.map(column => `<th scope="col">${escapeHtml(column.label)}</th>`).join('')}</tr>`;
+    const rows = [];
+    for (let index = 0; index < rowCount; index++) {
+        const cells = columns.map(column => {
+            const entry = column.entries[index];
+            if (!entry) return '<td class="class-top-ten-empty">—</td>';
+            const classLabel = showClass
+                ? `<span class="class-top-ten-class">${escapeHtml(normalizeClassName(entry.student.class))}</span>`
+                : '';
+            return `<td><div class="class-top-ten-entry"><span class="class-top-ten-rank">${entry.rank}</span><span>${escapeHtml(entry.student.name)}${classLabel}</span><span class="class-top-ten-score">${entry.score}</span></div></td>`;
+        });
+        rows.push(`<tr>${cells.join('')}</tr>`);
+    }
+    table.tBodies[0].innerHTML = rows.join('') || `<tr><td colspan="${columns.length}">当前范围暂无有效成绩</td></tr>`;
+    const scope = classSelect.selectedOptions[0].textContent;
+    const totalNote = rowCount && !columns[0].entries.length ? ' · 暂无总分成绩' : '';
+    document.getElementById('classDiffTopTenSummary').textContent =
+        `${scope} · ${students.length} 人 · 含并列第 10 名${totalNote}`;
+    table.parentElement.scrollTop = 0;
+}
+
+document.getElementById('classDiffTopTenClass').addEventListener('change', renderClassDiffTopTen);
+
 function renderClassDiffRankDistribution() {
     if (!combinedStudentData.length) return;
     var select = document.getElementById('classDiffRankSubject');
@@ -831,34 +928,13 @@ function renderClassDiffRankDistribution() {
         return;
     }
     document.getElementById('classDiffRankSection').style.display = 'block';
-    // Filter students with valid score for selected subject
-    var scoredStudents = combinedStudentData.filter(function(stu) {
-        var sd = getSubjectDataByAlias(stu, selectedSubject);
-        if (!sd) return false;
-        var s = parseFloat(sd.score);
-        return !isNaN(s) && isFinite(s);
-    });
-    if (!scoredStudents.length) {
+    const scoreForSubject = student => parseFloat(getSubjectDataByAlias(student, selectedSubject)?.score);
+    const rankForSubject = students => rankClassDiffScores(students, scoreForSubject)
+        .map(row => ({ ...row, normClass: normalizeClassName(row.student.class) }));
+    const rankedStudents = rankForSubject(combinedStudentData);
+    if (!rankedStudents.length) {
         document.getElementById('classDiffDistributionTablesContainer').innerHTML = '<div class="no-data">所选科目暂无有效的分数数据</div>';
         return;
-    }
-    // Sort by score descending (higher score = better rank)
-    scoredStudents.sort(function(a, b) {
-        var sa = parseFloat(getSubjectDataByAlias(a, selectedSubject).score) || 0;
-        var sb = parseFloat(getSubjectDataByAlias(b, selectedSubject).score) || 0;
-        if (sb !== sa) return sb - sa;
-        return 0;
-    });
-    // Assign ranks with tie handling (same score = same rank, skip ranks accordingly)
-    var rankedStudents = [];
-    var currentRank = 1;
-    for (var i = 0; i < scoredStudents.length; i++) {
-        if (i > 0) {
-            var prevScore = parseFloat(getSubjectDataByAlias(scoredStudents[i-1], selectedSubject).score) || 0;
-            var currScore = parseFloat(getSubjectDataByAlias(scoredStudents[i], selectedSubject).score) || 0;
-            if (currScore !== prevScore) currentRank = i + 1;
-        }
-        rankedStudents.push({ rank: currentRank, student: scoredStudents[i], normClass: normalizeClassName(scoredStudents[i].class || '未知班级') });
     }
     // Class list from ranked students (using normalized names)
     var classSet = new Set();
@@ -916,28 +992,8 @@ function renderClassDiffRankDistribution() {
     if (selectedBatches.length > 1) {
         multiBatchRankData = [];
         selectedBatches.forEach(function(batch) {
-            var batchScored = batch.data.filter(function(stu) {
-                var sd = getSubjectDataByAlias(stu, selectedSubject);
-                if (!sd) return false;
-                var s = parseFloat(sd.score);
-                return !isNaN(s) && isFinite(s);
-            });
-            if (!batchScored.length) return;
-            batchScored.sort(function(a, b) {
-                var sa = parseFloat(getSubjectDataByAlias(a, selectedSubject).score) || 0;
-                var sb = parseFloat(getSubjectDataByAlias(b, selectedSubject).score) || 0;
-                return (sb !== sa) ? sb - sa : 0;
-            });
-            var batchRanked = [];
-            var cr = 1;
-            for (var ri = 0; ri < batchScored.length; ri++) {
-                if (ri > 0) {
-                    var ps = parseFloat(getSubjectDataByAlias(batchScored[ri-1], selectedSubject).score) || 0;
-                    var cs = parseFloat(getSubjectDataByAlias(batchScored[ri], selectedSubject).score) || 0;
-                    if (cs !== ps) cr = ri + 1;
-                }
-                batchRanked.push({ rank: cr, student: batchScored[ri], normClass: normalizeClassName(batchScored[ri].class || '未知班级') });
-            }
+            const batchRanked = rankForSubject(batch.data);
+            if (!batchRanked.length) return;
             var bClassSegmentCounts = {};
             var bClassSegmentStudents = {};
             classList.forEach(function(cls) { bClassSegmentCounts[cls] = []; bClassSegmentStudents[cls] = []; });

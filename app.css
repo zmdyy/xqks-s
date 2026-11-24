@@ -541,6 +541,19 @@
         .analysis-nav-top { margin-top:12px; border-top:1px solid var(--border); padding-top:10px; font-size:12px; color:var(--text-tertiary); border-left-color:transparent !important; border-radius:var(--radius-sm); }
         .analysis-nav-top:hover { color:var(--primary); background:#f8fafc; border-left-color:var(--primary-light) !important; }
         .analysis-content { flex:1; min-width:0; }
+        .class-top-ten-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin-bottom:10px; }
+        .class-top-ten-toolbar h3 { margin-right:auto; font-size:1.2em; color:var(--primary); }
+        .class-top-ten-toolbar select { min-width:110px; padding:4px 8px; }
+        .class-top-ten-summary { color:var(--text-secondary); font-size:12px; }
+        .class-top-ten-scroll { max-height:min(54vh, 430px); overflow:auto; }
+        .class-top-ten-table { margin:0; border-collapse:separate; border-spacing:0; }
+        .class-top-ten-table th, .class-top-ten-table td { min-width:132px; height:36px; padding:0 8px; white-space:nowrap; }
+        .class-top-ten-table th { position:sticky; top:0; z-index:1; background:var(--primary); }
+        .class-top-ten-table .class-top-ten-entry { display:grid; grid-template-columns:2ch 1fr auto; align-items:center; gap:6px; line-height:1.2; text-align:left; }
+        .class-top-ten-rank, .class-top-ten-score { font-variant-numeric:tabular-nums; font-weight:600; }
+        .class-top-ten-rank { color:var(--primary); }
+        .class-top-ten-class { color:var(--text-secondary); font-size:11px; margin-left:4px; }
+        .class-top-ten-empty { color:var(--text-secondary); }
         .analysis-anchor-section { scroll-margin-top:18px; }
         .analysis-anchor-section.analysis-section-pulse { outline:2px solid rgba(28,61,92,.18); outline-offset:3px; border-radius:var(--radius); }
         @media (max-width: 900px) {
