@@ -29,7 +29,7 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         page.on('pageerror', e => errors.push(e.message));
         let workerLoads=0; page.on('response', r => { if(r.url().endsWith('/spreadsheet-worker.js') && r.ok()) workerLoads++; });
         await page.route('**/reports.js',async route=>{await new Promise(r=>setTimeout(r,120));await route.continue()});
-        await page.route('**/class-comparison.js',async route=>{await new Promise(r=>setTimeout(r,40));await route.continue()});
+        await page.route(/\/class-comparison\.js(?:\?|$)/,async route=>{await new Promise(r=>setTimeout(r,40));await route.continue()});
         await page.route('**/seating.js',async route=>{await new Promise(r=>setTimeout(r,80));await route.continue()});
         await page.goto(url + '/'); await page.waitForFunction(()=>!document.getElementById('mainImportBtn').disabled);
         async function chooseFiles(button, files) {
@@ -155,7 +155,59 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         // Local-file / unavailable-worker fallback still uses the same result format.
         const fallback=await page.evaluate(async()=>{const original=window.Worker;try{window.Worker=class{constructor(){throw new DOMException('blocked','SecurityError')}};const file=new File(['姓名,班级,物理\n测试,01班,1'],'测试.csv');return (await AppCore.imports.readWorkbook(file)).rows.length}finally{window.Worker=original}});
         assert.equal(fallback,2);
+        // Top ten ranks each subject within the selected class, keeping cutoff ties.
+        await page.evaluate(() => {
+            const scores = [105,104,103,102,99,99,98,97,96,95,95,94];
+            const students = scores.map((score, index) => ({
+                name: index === 4 || index === 5 ? '同名学生' : '学生' + index,
+                class: index % 2 ? '802' : '801',
+                subjects: {
+                    '英语总分': {score: 83 - index}, '英语笔试': {score: 60 - index}, '听说': {score: 23},
+                    '总分': {score: 612 - index}, '数学': {score, classRank: 50, gradeRank: 50},
+                    '物理': {score: index === 0 ? 0 : '缺考'}
+                }
+            }));
+            const headers = Object.keys(students[0].subjects).map(name => ({name}));
+            const first = {id:'top-ten', label:'前十测试', combinedStudentData:students, allSubjectHeaders:headers};
+            const next = {id:'top-ten-next', label:'新班级测试',
+                combinedStudentData:[{name:'其他班学生', class:'803', subjects:{'数学':{score:98}}}],
+                allSubjectHeaders:[{name:'数学'}]};
+            DataPool.batches.push(first, next);
+            loadBatch(first.id);
+            refreshBatchList();
+        });
+        await page.click('[data-tab="tab-class-diff"]');
+        await page.click('[data-analysis-target="classDiffTopTenSection"]');
+        const top = page.locator('#classDiffTopTenTable');
+        const classChoice = page.locator('#classDiffTopTenClass');
+        const getRanks = (column) => top.locator(`tbody td:nth-child(${column}) .class-top-ten-rank`).allTextContents();
+        assert.deepEqual(await top.locator('th').allTextContents(), ['总分','英语','数学','物理']);
+        assert.equal(await top.locator('tbody td:first-child .class-top-ten-score').first().textContent(), '612');
+        assert.deepEqual(await getRanks(3), ['1','2','3','4','5','5','7','8','9','10','10']);
+        assert.equal(await top.locator('tbody td:nth-child(4) .class-top-ten-score').textContent(), '0');
+        assert.deepEqual(await top.locator('tbody td:nth-child(3) .class-top-ten-class').allTextContents(),
+            ['01班','02班','01班','02班','01班','02班','01班','02班','01班','02班','01班']);
+        const heights = await top.locator('tbody tr').evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
+        assert.equal(new Set(heights).size, 1, 'ties must use standard-height rows');
+        await classChoice.selectOption({label:'02班'});
+        assert.deepEqual(await getRanks(3), ['1','2','3','4','5','6']);
+        assert.deepEqual(await top.locator('tbody td:nth-child(3) .class-top-ten-score').allTextContents(), ['104','102','99','97','95','94']);
+        assert.deepEqual(await top.locator('tbody td:first-child .class-top-ten-score').allTextContents(), ['611','609','607','605','603','601']);
+        assert.deepEqual(await getRanks(4), [], 'absent class scores must not be ranked');
+        await classChoice.selectOption({label:'全部班级'});
+        assert.equal((await getRanks(3)).length, 11);
+        await page.locator('#classDiffBatchPicker input[value="top-ten-next"]').check();
+        assert.equal((await getRanks(3)).length, 11, 'comparison batches must not feed the top-ten table');
+        await classChoice.selectOption({label:'02班'});
+        await page.click('[data-tab="tab-upload"]');
+        await page.selectOption('#batchSelector', 'top-ten-next');
+        await page.click('[data-tab="tab-class-diff"]');
+        assert.deepEqual(await classChoice.locator('option').allTextContents(), ['全部班级','03班']);
+        assert.equal(await classChoice.inputValue(), '');
+        assert.deepEqual(await top.locator('th').allTextContents(), ['总分','数学']);
+        assert.deepEqual(await getRanks(1), [], 'missing total must not be inferred from subjects');
+        assert.deepEqual(await getRanks(2), ['1']);
         assert.deepEqual(errors,[],'browser uncaught exceptions');
-        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
+        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, class top ten, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
     } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(error=>{console.error(error);process.exitCode=1});
