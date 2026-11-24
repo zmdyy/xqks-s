@@ -545,29 +545,35 @@ function buildHeatmapReportSvg(subjectName, selectedClass, buckets, total) {
     return parts.join('');
 }
 
-function downloadHeatmapReportImage(svgText, fileName) {
+function downloadHeatmapReportImage(svgText, fileName, scale = 2) {
     if (!svgText) return;
-    var img = new Image();
-    var svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-    var url = URL.createObjectURL(svgBlob);
-    img.onload = function() {
-        var canvas = document.createElement('canvas');
-        canvas.width = img.width * 2;
-        canvas.height = img.height * 2;
-        var ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(url);
-        var a = document.createElement('a');
-        a.href = canvas.toDataURL('image/png');
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+    const image = new Image();
+    const url = URL.createObjectURL(new Blob([svgText], {type:'image/svg+xml;charset=utf-8'}));
+    image.onload = function() {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = image.naturalWidth * scale;
+            canvas.height = image.naturalHeight * scale;
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('当前浏览器无法生成图片');
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(function(blob) {
+                if (blob) downloadCollectiveHeatmapBlob(blob, fileName);
+                else showAlert('图片生成失败，请重试');
+            }, 'image/png');
+        } catch (error) {
+            showAlert(error.message || '图片生成失败，请重试');
+        } finally {
+            URL.revokeObjectURL(url);
+        }
     };
-    img.onerror = function() { URL.revokeObjectURL(url); showAlert('名单图生成失败，请重试'); };
-    img.src = url;
+    image.onerror = function() {
+        URL.revokeObjectURL(url);
+        showAlert('名单图生成失败，请重试');
+    };
+    image.src = url;
 }
 
 async function exportHeatmapSubjectRosterImage() {
@@ -979,8 +985,12 @@ function buildClassDiffTopTenExportSvg(table, caption) {
     const width = Math.max(tableWidth, measure(caption, 'caption'), measure('各科前十', 'title')) + margin * 2;
     const top = 78, headerHeight = 40, rowHeight = 36;
     const height = top + headerHeight + rows.length * rowHeight + margin;
+    // 将 SVG 直接按 4 倍像素栅格化，超出画布预算时导出原尺寸的矢量图。
+    const pngWidth = width * 4, pngHeight = height * 4;
+    const usePng = Math.max(pngWidth, pngHeight) <= 16384 && pngWidth * pngHeight <= 32000000;
+    const exportWidth = usePng ? pngWidth : width, exportHeight = usePng ? pngHeight : height;
     const svg = [
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${escapeHtml(fontFamily)}">`,
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${exportWidth}" height="${exportHeight}" viewBox="0 0 ${width} ${height}" font-family="${escapeHtml(fontFamily)}">`,
         '<rect width="100%" height="100%" fill="#ffffff"/>',
         drawText('各科前十', 'title', margin, 31),
         drawText(caption, 'caption', margin, 57)
@@ -1016,7 +1026,7 @@ function buildClassDiffTopTenExportSvg(table, caption) {
         });
     });
     svg.push('</svg>');
-    return {svg:svg.join(''), width, height};
+    return {svg:svg.join(''), usePng};
 }
 
 async function exportClassDiffTopTenImage() {
@@ -1029,13 +1039,9 @@ async function exportClassDiffTopTenImage() {
         const summary = document.getElementById('classDiffTopTenSummary').textContent;
         const mode = table.classList.contains('show-details') ? '详情' : '名单';
         const filename = ['各科前十', batch, scope, mode].map(part => part.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)).join('_');
-        const {svg, width, height} = buildClassDiffTopTenExportSvg(table, `${batch} · ${scope} · ${summary}`);
-        // Keep exceptionally tall lists intact when a high-resolution bitmap would exceed the canvas budget.
-        if (width > 8000 || height > 8000 || width * height > 4000000) {
-            downloadCollectiveHeatmapBlob(new Blob([svg], {type:'image/svg+xml;charset=utf-8'}), filename + '.svg');
-        } else {
-            downloadHeatmapReportImage(svg, filename + '.png');
-        }
+        const {svg, usePng} = buildClassDiffTopTenExportSvg(table, `${batch} · ${scope} · ${summary}`);
+        if (usePng) downloadHeatmapReportImage(svg, filename + '.png', 1);
+        else downloadCollectiveHeatmapBlob(new Blob([svg], {type:'image/svg+xml;charset=utf-8'}), filename + '.svg');
     } catch (error) {
         await showAlert(error.message || '图片生成失败，请重试');
     }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>学情可视化展板</title>
     <link rel="preload" href="reports.js" as="script">
-    <link rel="preload" href="class-comparison.js?v=top-ten-export" as="script">
+    <link rel="preload" href="class-comparison.js?v=top-ten-sharp-export" as="script">
     <link rel="preload" href="seating.js" as="script">
     <link rel="preload" href="seating-data.js" as="script">
     <link rel="preload" href="seating-engine.js" as="script">
@@ -287,7 +287,8 @@
             <span id="classDiffTopTenSummary" class="class-top-ten-summary" role="status"></span>
             <button type="button" class="class-top-ten-details" id="classDiffTopTenDetails"
                 aria-pressed="false" aria-controls="classDiffTopTenTable">显示详情</button>
-            <button type="button" class="class-top-ten-export" id="classDiffTopTenExport" disabled>导出图片</button>
+            <button type="button" class="class-top-ten-export" id="classDiffTopTenExport"
+                title="以 4 倍分辨率导出整张表，大表导出为矢量图" disabled>导出图片</button>
         </div>
         <div class="scroll-container class-top-ten-scroll" tabindex="0" role="region" aria-labelledby="classDiffTopTenTitle">
             <table class="class-top-ten-table" id="classDiffTopTenTable" aria-labelledby="classDiffTopTenTitle">
@@ -1148,7 +1149,7 @@
 </div>
 
 <script src="reports.js"></script>
-<script src="class-comparison.js?v=top-ten-export"></script>
+<script src="class-comparison.js?v=top-ten-sharp-export"></script>
 <script src="seating-data.js"></script>
 <script src="seating-engine.js"></script>
 <script src="seating.js"></script>

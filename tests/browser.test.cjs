@@ -276,9 +276,9 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         }).then(style => style.join(' ')), 'rgb(255, 255, 255) 700 14px');
         await page.evaluate(() => {
             const original = downloadHeatmapReportImage;
-            downloadHeatmapReportImage = (svg, name) => {
+            downloadHeatmapReportImage = (svg, name, scale) => {
                 window.lastTopTenImageSvg = svg;
-                original(svg, name);
+                original(svg, name, scale);
             };
             document.querySelector('#classDiffTopTenTable').parentElement.style.maxHeight = '180px';
         });
@@ -287,6 +287,7 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
             return {
                 width:Number(svg.documentElement.getAttribute('width')),
                 height:Number(svg.documentElement.getAttribute('height')),
+                viewBox:svg.documentElement.getAttribute('viewBox').split(' ').map(Number),
                 texts:[...svg.querySelectorAll('text')].map(node => [node.textContent, Number(node.getAttribute('y'))])
             };
         });
@@ -294,8 +295,10 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.equal(compactImage.name, '各科前十_前十测试_全部班级_名单.png');
         assert.equal(compactImage.bytes.subarray(1,4).toString(), 'PNG');
         const compactSvg = await snapshotTopTen();
-        assert.equal(compactImage.bytes.readUInt32BE(16), compactSvg.width * 2);
-        assert.equal(compactImage.bytes.readUInt32BE(20), compactSvg.height * 2);
+        assert.equal(compactSvg.width, compactSvg.viewBox[2] * 4);
+        assert.equal(compactSvg.height, compactSvg.viewBox[3] * 4);
+        assert.equal(compactImage.bytes.readUInt32BE(16), compactSvg.width);
+        assert.equal(compactImage.bytes.readUInt32BE(20), compactSvg.height);
         assert.ok(compactSvg.texts.some(([text, y]) => text === '学生10' && y > 180), 'full cutoff tie must be in the image');
         assert.ok(compactSvg.texts.some(([text]) => text === '并列第 10'));
         assert.ok(!compactSvg.texts.some(([text]) => ['612','01班','02班'].includes(text)));
@@ -326,6 +329,8 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.equal(detailedImage.name, '各科前十_前十测试_02班_详情.png');
         assert.equal(detailedImage.bytes.subarray(1,4).toString(), 'PNG');
         const detailedSvg = await snapshotTopTen();
+        assert.equal(detailedImage.bytes.readUInt32BE(16), detailedSvg.viewBox[2] * 4);
+        assert.equal(detailedImage.bytes.readUInt32BE(20), detailedSvg.viewBox[3] * 4);
         assert.ok(detailedSvg.texts.some(([text]) => text === '611'));
         assert.ok(!detailedSvg.texts.some(([text]) => ['612','学生0','并列第 10'].includes(text)));
         await top.evaluate(table => {
@@ -358,6 +363,6 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.deepEqual(await getRanks(1), [], 'missing total must not be inferred from subjects');
         assert.deepEqual(await getRanks(2), ['1']);
         assert.deepEqual(errors,[],'browser uncaught exceptions');
-        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, one-line personal toolbar, personal class filter, class top ten compact/detail and PNG export, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
+        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, one-line personal toolbar, personal class filter, class top ten compact/detail and 4x PNG export, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
     } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(error=>{console.error(error);process.exitCode=1});
