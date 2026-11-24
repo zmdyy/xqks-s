@@ -9,7 +9,7 @@
     <link rel="preload" href="seating.js" as="script">
     <link rel="preload" href="seating-data.js" as="script">
     <link rel="preload" href="seating-engine.js" as="script">
-    <link rel="stylesheet" href="app.css?v=subject-top-ten">
+    <link rel="stylesheet" href="app.css?v=personal-toolbar">
     <script src="app-core.js"></script>
     <script src="workspace-manager.js?v=workspace-entry"></script>
     <script src="echarts.min.js"></script>
@@ -482,32 +482,45 @@
             <button type="button" class="analysis-nav-item analysis-nav-top" data-analysis-top="true">↑ 回到顶部</button>
         </nav>
         <div class="analysis-content">
-    <div class="controls">
-        <div class="control-group">
-            <label for="personalClassFilter">班级</label>
-            <select id="personalClassFilter"><option value="">全部班级</option></select>
-        </div>
-        <div class="control-group"><label for="nameSearch">学生姓名：</label>
-            <div class="student-search-group" style="width:160px;">
-                <input type="text" id="nameSearch" placeholder="输入或选择姓名" style="width:160px;">
-                <div class="student-suggest" id="nameSearchSuggest" style="display:none;"></div>
+    <div class="personal-toolbar-wrap">
+        <div class="controls personal-toolbar" id="personalToolbar" role="group" aria-label="个人分析筛选" tabindex="0">
+            <div class="control-group">
+                <label for="personalClassFilter">班级</label>
+                <select id="personalClassFilter"><option value="">全部班级</option></select>
             </div>
-            <datalist id="studentNameList"></datalist>
+            <div class="control-group">
+                <label for="nameSearch">姓名</label>
+                <div class="student-search-group">
+                    <input type="text" id="nameSearch" placeholder="输入或选择姓名">
+                </div>
+                <datalist id="studentNameList"></datalist>
+            </div>
+            <div class="control-group">
+                <label for="rankStart">范围</label>
+                <input type="number" id="rankStart" aria-label="显示范围起始条目" value="1" min="1">
+                <span aria-hidden="true">—</span>
+                <input type="number" id="rankEnd" aria-label="显示范围结束条目" value="20" min="1">
+                <span>条</span>
+            </div>
+            <div class="control-group">
+                <label for="rankType">排名</label>
+                <select id="rankType">
+                    <option value="级名">年级</option>
+                    <option value="校名">全校</option>
+                    <option value="班名">班内</option>
+                </select>
+            </div>
+            <button class="filter-btn" id="filterBtn">查询/分析</button>
+            <div class="control-group">
+                <label for="searchContextRange">前后 <b id="rangeValueDisplay">10 名</b></label>
+                <input type="range" id="searchContextRange" min="1" max="50" value="10">
+            </div>
+            <div class="control-group">
+                <label for="weakRateThreshold">小题薄弱阈值 <b id="weakRateThresholdDisplay">0.60</b></label>
+                <input type="range" id="weakRateThreshold" min="0.1" max="0.9" value="0.6" step="0.01">
+            </div>
         </div>
-        <div class="control-group"><label>显示范围：</label>
-            <input type="number" id="rankStart" value="1" min="1"> <span>—</span>
-            <input type="number" id="rankEnd" value="20" min="1"> <span>条</span>
-        </div>
-        <div class="control-group"><label>排名类型：</label>
-            <select id="rankType"><option value="级名">级名</option><option value="校名">校名</option><option value="班名">班名</option></select>
-        </div>
-        <button class="filter-btn" id="filterBtn">查询/分析</button>
-        <div class="control-group"><span>上下文：<b id="rangeValueDisplay">10 名</b></span>
-            <input type="range" id="searchContextRange" min="1" max="50" value="10" style="width:130px;">
-        </div>
-        <div class="control-group"><span>小题薄弱阈值：<b id="weakRateThresholdDisplay">0.60</b></span>
-            <input type="range" id="weakRateThreshold" min="0.1" max="0.9" value="0.6" step="0.01" style="width:100px;">
-        </div>
+        <div class="student-suggest personal-student-suggest" id="nameSearchSuggest" style="display:none;"></div>
     </div>
     <div class="results-section analysis-anchor-section" id="rankingTableOutput" data-analysis-section="rankingTableOutput">
         <div class="no-data">请先在「上传管理」中上传Excel数据，然后搜索姓名或设置排名范围点击查询</div>
@@ -1411,6 +1424,10 @@ function bindStudentSearchInput(config) {
     var suggest = document.getElementById(config.suggestId);
     if (!input || !suggest || input.dataset.studentSearchBound) return;
     input.dataset.studentSearchBound = '1';
+    function showMatches(matches) {
+        renderStudentSuggestList(suggest, matches);
+        config.positionSuggest?.(suggest, input);
+    }
     if (config.datalistId) {
         var group = input.closest('.student-search-group');
         var toggle = group ? group.querySelector('.student-search-toggle') : null;
@@ -1430,7 +1447,7 @@ function bindStudentSearchInput(config) {
                 var matches = datalist ? Array.from(datalist.options).map(function(option) {
                     return { displayName: option.value, rawName: option.value, className: '', fullPinyin: '', initials: '' };
                 }).filter(function(entry) { return entry.displayName; }) : [];
-                renderStudentSuggestList(suggest, matches);
+                showMatches(matches);
                 input.focus();
             });
         }
@@ -1443,7 +1460,7 @@ function bindStudentSearchInput(config) {
             hideStudentSuggest(suggest);
             return;
         }
-        renderStudentSuggestList(suggest, matches);
+        showMatches(matches);
     });
     input.addEventListener('blur', function() {
         setTimeout(function() { hideStudentSuggest(suggest); }, 200);
@@ -1468,10 +1485,21 @@ function bindStudentSearchInput(config) {
 function initStudentSearchBindings() {
     if (studentSearchBindingsInitialized) return;
     studentSearchBindingsInitialized = true;
+    const personalToolbar = document.getElementById('personalToolbar');
+    personalToolbar.addEventListener('scroll', function() {
+        hideStudentSuggest(document.getElementById('nameSearchSuggest'));
+    }, { passive:true });
     bindStudentSearchInput({
         inputId: 'nameSearch',
         suggestId: 'nameSearchSuggest',
         datalistId: 'studentNameList',
+        positionSuggest: function(suggest, input) {
+            const container = suggest.parentElement.getBoundingClientRect();
+            const field = input.getBoundingClientRect();
+            const left = Math.min(field.left - container.left, container.width - suggest.offsetWidth);
+            suggest.style.left = Math.max(0, left) + 'px';
+            suggest.style.top = (field.bottom - container.top) + 'px';
+        },
         getClassFilter: getPersonalClassFilter,
         onInput: function(value) {
             var hv = String(value || '').trim().length > 0;
