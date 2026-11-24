@@ -483,16 +483,20 @@
         </nav>
         <div class="analysis-content">
     <div class="controls">
-        <div class="control-group"><label>学生姓名：</label>
+        <div class="control-group">
+            <label for="personalClassFilter">班级</label>
+            <select id="personalClassFilter"><option value="">全部班级</option></select>
+        </div>
+        <div class="control-group"><label for="nameSearch">学生姓名：</label>
             <div class="student-search-group" style="width:160px;">
                 <input type="text" id="nameSearch" placeholder="输入或选择姓名" style="width:160px;">
                 <div class="student-suggest" id="nameSearchSuggest" style="display:none;"></div>
             </div>
             <datalist id="studentNameList"></datalist>
         </div>
-        <div class="control-group"><label>排名范围：</label>
+        <div class="control-group"><label>显示范围：</label>
             <input type="number" id="rankStart" value="1" min="1"> <span>—</span>
-            <input type="number" id="rankEnd" value="20" min="1"> <span>名</span>
+            <input type="number" id="rankEnd" value="20" min="1"> <span>条</span>
         </div>
         <div class="control-group"><label>排名类型：</label>
             <select id="rankType"><option value="级名">级名</option><option value="校名">校名</option><option value="班名">班名</option></select>
@@ -1320,6 +1324,7 @@ function buildStudentSearchIndex(data) {
             displayName: displayName || rawName,
             rawName: rawName || displayName,
             className: String(stu.class || '').trim(),
+            classKey: AppCore.classKey(stu.class),
             normalizedDisplay: normalizedDisplay,
             normalizedRaw: normalizedRaw,
             fullPinyin: displayPinyin.full || rawPinyin.full || '',
@@ -1350,9 +1355,11 @@ function searchStudents(keyword, options) {
     if (!normalized) return [];
     options = options || {};
     var classFilter = options.classFilter;
+    var hasClassFilter = classFilter && classFilter !== '__all__';
+    var classKey = AppCore.classKey(classFilter);
     var limit = options.limit || 20;
     return studentSearchIndex.map(function(entry) {
-        if (classFilter && classFilter !== '__all__' && String(entry.className) !== String(classFilter)) return null;
+        if (hasClassFilter && entry.classKey !== classKey) return null;
         var score = scoreStudentSearchEntry(entry, normalized);
         if (score < 0) return null;
         return { entry: entry, score: score };
@@ -1465,12 +1472,14 @@ function initStudentSearchBindings() {
         inputId: 'nameSearch',
         suggestId: 'nameSearchSuggest',
         datalistId: 'studentNameList',
+        getClassFilter: getPersonalClassFilter,
         onInput: function(value) {
             var hv = String(value || '').trim().length > 0;
             document.getElementById('rankStart').disabled = hv;
             document.getElementById('rankEnd').disabled = hv;
         },
-        onEnter: function() { displayPersonalResults(); }
+        onEnter: function() { displayPersonalResults(); },
+        onSelect: function() { displayPersonalResults(); }
     });
     bindStudentSearchInput({
         inputId: 'collectiveStudentQueryInput',
@@ -3944,12 +3953,41 @@ function combineAllStudentData(syncBatch) {
     if (syncBatch !== false) DataPool.syncFromGlobalsIfEditing();
 }
 
+function getPersonalClassFilter() {
+    return document.getElementById('personalClassFilter').value;
+}
+
+function getPersonalStudents(data) {
+    const classKey = getPersonalClassFilter();
+    return classKey ? data.filter(student => AppCore.classKey(student.class) === classKey) : data;
+}
+
+function updatePersonalStudentOptions(students) {
+    const names = [...new Set(students.map(getStudentDisplayName))].filter(Boolean).sort();
+    const options = document.createDocumentFragment();
+    for (const name of names) options.appendChild(new Option(name, name));
+    document.getElementById('studentNameList').replaceChildren(options);
+    hideStudentSuggest(document.getElementById('nameSearchSuggest'));
+}
+
 function updateStudentNameList(data) {
-    const dl = document.getElementById('studentNameList'); dl.innerHTML = '';
-    buildStudentSearchIndex(data || []);
+    const students = data || [];
+    buildStudentSearchIndex(students);
     initStudentSearchBindings();
-    if (!data.length) return;
-    [...new Set(data.map(s => getStudentDisplayName(s)))].sort().forEach(n => { const o = document.createElement('option'); o.value = n; dl.appendChild(o); });
+    const select = document.getElementById('personalClassFilter');
+    const previous = select.value;
+    const classes = new Map();
+    for (const student of students) {
+        const key = AppCore.classKey(student.class);
+        if (key) classes.set(key, AppCore.classLabel(student.class));
+    }
+    const options = [...classes].sort((a, b) => a[1].localeCompare(b[1], 'zh-CN', { numeric: true }));
+    select.replaceChildren(new Option('全部班级', ''), ...options.map(([key, label]) => new Option(label, key)));
+    select.value = classes.has(previous) ? previous : '';
+    const scoped = getPersonalStudents(students);
+    const input = document.getElementById('nameSearch');
+    if (input.value.trim() && !findStudentByNameOrDisplay(scoped, input.value)) input.value = '';
+    updatePersonalStudentOptions(scoped);
 }
 
 function parseDataByHeaderRows(fileEntry, rawData, overrideHeaderRows) {
@@ -4321,14 +4359,22 @@ function calculateTotalExamFullMark(subjectNames, fullMarks, totalName) {
 //  PERSONAL ANALYSIS TAB (V44 core)
 // ============================================================
 function displayPersonalResults() {
-    normalizeStudentSearchInputValue('nameSearch');
+    const classFilter = getPersonalClassFilter();
+    const scope = escapeHtml(document.getElementById('personalClassFilter').selectedOptions[0]?.textContent || '全部班级');
+    const students = getPersonalStudents(combinedStudentData);
+    normalizeStudentSearchInputValue('nameSearch', { classFilter });
     const rankingTableOutput = document.getElementById('rankingTableOutput');
     const aiOutput = document.getElementById('aiAnalysisOutput');
     const dataContent = document.getElementById('analysisDataContent');
     const rankType = document.getElementById('rankType').value;
     const searchName = document.getElementById('nameSearch').value.trim();
     const isSearching = searchName.length > 0;
-    aiOutput.style.display = 'none'; dataContent.textContent = '';
+    const rankStart = document.getElementById('rankStart');
+    const rankEnd = document.getElementById('rankEnd');
+    rankStart.disabled = isSearching;
+    rankEnd.disabled = isSearching;
+    aiOutput.style.display = 'none';
+    dataContent.textContent = '';
 
     if (!combinedStudentData.length) {
         rankingTableOutput.innerHTML = '<div class="no-data">请先在「上传管理」中上传Excel数据</div>';
@@ -4339,81 +4385,91 @@ function displayPersonalResults() {
         rankingTableOutput.innerHTML = '<div class="no-data">当前批次没有可分析的科目数据</div>';
         return;
     }
-    let anchorSubjName = getTotalSubjectName(allSubjectHeaders, combinedStudentData);
-    if (!anchorSubjName) {
-        const scoredNames = getScoredSubjectNames(combinedStudentData, allSubjectHeaders);
-        anchorSubjName = scoredNames.length ? scoredNames[0] : '';
-    }
-    const getFullList = (sn) => combinedStudentData.map(stu => { const sd = stu.subjects[sn]; const rv = getRankValue(sd, rankType); return { student: stu, subjectData: sd, rankValue: rv, hasSubjectScore: sd && validateSubjectScore(sd) }; }).filter(e => e.hasSubjectScore && e.rankValue !== null).sort((a,b) => a.rankValue - b.rankValue);
-    const anchorFullList = getFullList(anchorSubjName);
-    const columnsFullDataMap = {};
-    analysisSubjectNames.forEach(function(subjectName) {
-        const isMain = anchorFullList.some(e => e.student.subjects[subjectName] && (hasMeaningfulRank(e.student.subjects[subjectName].gradeRank) || hasMeaningfulRank(e.student.subjects[subjectName].schoolRank) || hasMeaningfulRank(e.student.subjects[subjectName].classRank)));
-        if (isMain) columnsFullDataMap[subjectName] = getFullList(subjectName);
-    });
-    const dispSubjNames = Object.keys(columnsFullDataMap).filter(n => n !== anchorSubjName);
-    const dispSubjHeaders = dispSubjNames.map(function(name) { return { name:name }; });
-    let indicesToShow = new Set(), anchorRank = -1, startRank, endRank;
+    const anchorSubjName = getTotalSubjectName(allSubjectHeaders, combinedStudentData)
+        || getScoredSubjectNames(combinedStudentData, allSubjectHeaders)[0] || '';
+    const getRankedListForSubject = subjectName => students.map(student => {
+        const subjectData = student.subjects[subjectName];
+        return { student, subjectData, rankValue: getRankValue(subjectData, rankType) };
+    }).filter(entry => validateSubjectScore(entry.subjectData) && entry.rankValue > 0)
+        .sort((a, b) => a.rankValue - b.rankValue);
+    const anchorList = getRankedListForSubject(anchorSubjName);
+    const subjectColumns = analysisSubjectNames.filter(name => name !== anchorSubjName)
+        .map(name => ({ name, entries: getRankedListForSubject(name) }))
+        .filter(column => column.entries.length);
 
+    let selectEntries, selectedStudent, summary;
     if (isSearching) {
-        const analysisData = extractStudentAnalysisData(searchName, document.getElementById('weakRateThreshold').value);
-        if (analysisData) { aiOutput.style.display = 'block'; dataContent.textContent = analysisData; }
-        else { rankingTableOutput.innerHTML = `<div class="info-section" style="background:#f7e0e0;border-left-color:#d9534f;"><h3>未找到数据</h3><p>在已上传文件中未找到学生 **${escapeHtml(searchName)}** 的数据。</p></div>`; return; }
-        const ctx = parseInt(document.getElementById('searchContextRange').value, 10) || 10;
-        let ari = -1;
-        for (let i = 0; i < anchorFullList.length; i++) { if (String(getStudentDisplayName(anchorFullList[i].student)) === searchName || String(anchorFullList[i].student.name) === searchName) { ari = i; anchorRank = i + 1; break; } }
-        if (ari === -1) { rankingTableOutput.innerHTML = `<div class="info-section" style="background:#f7e0e0;border-left-color:#d9534f;"><h3>排名信息缺失</h3><p>已找到学生 **${escapeHtml(searchName)}** 的详细数据，但总分排名缺失。</p></div>`; return; }
-        startRank = Math.max(1, anchorRank - ctx); endRank = Math.min(anchorFullList.length, anchorRank + ctx);
-        const reqSpan = ctx * 2 + 1;
-        if (endRank - startRank + 1 < reqSpan) {
-            if (anchorRank - ctx < 1) endRank = Math.min(anchorFullList.length, startRank + reqSpan - 1);
-            else if (anchorRank + ctx > anchorFullList.length) startRank = Math.max(1, endRank - reqSpan + 1);
+        selectedStudent = findStudentByNameOrDisplay(students, searchName);
+        const analysisData = extractStudentAnalysisData(searchName,
+            document.getElementById('weakRateThreshold').value, selectedStudent);
+        if (analysisData) {
+            aiOutput.style.display = 'block';
+            dataContent.textContent = analysisData;
         }
-        for (let i = startRank - 1; i <= endRank - 1; i++) indicesToShow.add(i);
+        if (!selectedStudent) {
+            rankingTableOutput.innerHTML = `<div class="no-data">${scope}中未找到学生「${escapeHtml(searchName)}」</div>`;
+            return;
+        }
+        const index = anchorList.findIndex(entry => entry.student === selectedStudent);
+        if (index < 0) {
+            rankingTableOutput.innerHTML = `<div class="no-data">${escapeHtml(getStudentDisplayName(selectedStudent))}暂无可用的${escapeHtml(anchorSubjName || '总分')}${rankType}</div>`;
+            return;
+        }
+        const context = parseInt(document.getElementById('searchContextRange').value, 10) || 10;
+        let first = Math.max(0, index - context);
+        const last = Math.min(anchorList.length, first + (context * 2 + 1));
+        first = Math.max(0, last - (context * 2 + 1));
+        selectEntries = entries => entries.slice(first, last);
+        summary = `<strong>${scope}</strong> · ${escapeHtml(getStudentDisplayName(selectedStudent))} · ${escapeHtml(anchorSubjName)}${rankType}第 ${anchorList[index].rankValue} 名`;
     } else {
-        aiOutput.style.display = 'none';
-        startRank = Math.max(1, parseInt(document.getElementById('rankStart').value) || 1);
-        endRank = Math.min(anchorFullList.length, parseInt(document.getElementById('rankEnd').value) || 10);
-        if (startRank > endRank) [startRank, endRank] = [endRank, startRank];
-        const si = Math.max(0, startRank - 1), cnt = endRank - startRank + 1;
-        for (let i = 0; i < cnt; i++) indicesToShow.add(si + i);
+        const a = Math.max(1, parseInt(rankStart.value, 10) || 1);
+        const b = Math.max(1, parseInt(rankEnd.value, 10) || 20);
+        const first = Math.min(a, b) - 1, last = Math.min(Math.max(a, b), anchorList.length);
+        selectEntries = entries => entries.slice(first, last);
+        const range = first < last ? ` · 显示第 ${first + 1}–${last} 条` : '';
+        summary = `<strong>${scope}</strong> · 按${rankType}排序${range}`;
     }
-    const sortedIndices = Array.from(indicesToShow).sort((a,b) => a - b);
-    const studentColorMap = {};
-    if (!isSearching) {
-        anchorFullList.forEach((e, idx) => {
-            if (idx >= (startRank - 1) && idx < endRank) studentColorMap[getStudentDisplayName(e.student)] = DISTINCT_COLORS[(idx - (startRank - 1)) % DISTINCT_COLORS.length];
-        });
+
+    const visibleAnchor = selectEntries(anchorList);
+    subjectColumns.forEach(column => { column.visible = selectEntries(column.entries); });
+    if (!visibleAnchor.length) {
+        rankingTableOutput.innerHTML = `<div class="info-section">${summary}</div><div class="no-data">此范围暂无排名数据</div>`;
+        return;
     }
-    const getCellStyle = (sName) => {
-        if (isSearching) return String(sName) === searchName ? 'class="search-highlight"' : '';
-        const bg = studentColorMap[sName];
-        return bg ? `style="background-color:${bg};font-weight:bold;"` : '';
+    const colors = new Map(visibleAnchor.map((entry, index) => [entry.student, DISTINCT_COLORS[index % DISTINCT_COLORS.length]]));
+    const cellStyle = student => {
+        if (isSearching) return student === selectedStudent ? 'class="search-highlight"' : '';
+        const color = colors.get(student);
+        return color ? `style="background-color:${color};font-weight:bold;"` : '';
     };
-    let html = `<div class="info-section">${isSearching ? `<strong>检索模式：</strong> 正在显示学生 <strong>${searchName}</strong> 在总榜排名 ${anchorRank} 周围的上下文（第 ${startRank} 至 ${endRank} 名）。` : `<strong>排名模式：</strong> 显示第 ${startRank} 至 ${endRank} 名。`}</div><table><thead><tr><th>序号</th><th style="background:#2980b9;">姓名/${anchorSubjName||'总分'}</th><th>行政班级</th><th>科类/类型</th>`;
-    dispSubjHeaders.forEach(s => { html += `<th>${s.name}<br><span class="header-format">姓名/分数</span></th>`; });
+    let html = `<div class="info-section">${summary}</div><table><thead><tr><th>名次</th><th>姓名/${escapeHtml(anchorSubjName || '总分')}</th><th>行政班级</th><th>科类/类型</th>`;
+    const subjectHeader = classFilter ? '名次/姓名/分数' : '姓名/分数';
+    subjectColumns.forEach(column => {
+        html += `<th>${escapeHtml(column.name)}<br><span class="header-format">${subjectHeader}</span></th>`;
+    });
     html += '</tr></thead><tbody>';
-    sortedIndices.forEach(di => {
-        const ae = anchorFullList[di];
-        let dispRank = ae ? ae.rankValue : `(${di + 1})`;
-        html += `<tr><td>${dispRank}</td>`;
-        if (ae) {
-            const stl = getCellStyle(ae.student.name);
-            html += `<td ${stl}><div class="rank-display">${getStudentDisplayName(ae.student)}</div><div class="score-display">${pickDataValue(ae.subjectData.score, null, '-')}</div></td><td>${ae.student.class}</td><td>${ae.student.schoolType||ae.student.candidateType||'-'}</td>`;
-        } else { html += '<td>-</td><td>-</td><td>-</td>'; }
-        dispSubjHeaders.forEach(s => {
-            const list = columnsFullDataMap[s.name], entry = list?.[di] || null;
-            if (entry) { const stl = getCellStyle(getStudentDisplayName(entry.student)); html += `<td ${stl}><div class="rank-display">${getStudentDisplayName(entry.student)}</div><div class="score-display">${pickDataValue(entry.subjectData.score, null, '')}</div></td>`; }
-            else html += '<td>-</td>';
-        });
+    visibleAnchor.forEach(({ student, subjectData, rankValue }, index) => {
+        const identity = escapeHtml(getStudentDisplayName(student));
+        const score = escapeHtml(subjectData.score);
+        const className = escapeHtml(student.class);
+        const category = escapeHtml(student.schoolType || student.candidateType || '—');
+        html += `<tr><td>${rankValue}</td><td ${cellStyle(student)}><div class="rank-display">${identity}</div><div class="score-display">${score}</div></td><td>${className}</td><td>${category}</td>`;
+        for (const column of subjectColumns) {
+            const entry = column.visible[index];
+            if (!entry) {
+                html += '<td>—</td>';
+                continue;
+            }
+            const rank = classFilter ? `${entry.rankValue} · ` : '';
+            html += `<td ${cellStyle(entry.student)}><div class="rank-display">${rank}${escapeHtml(getStudentDisplayName(entry.student))}</div><div class="score-display">${escapeHtml(entry.subjectData.score)}</div></td>`;
+        }
         html += '</tr>';
     });
-    html += '</tbody></table>';
-    rankingTableOutput.innerHTML = html;
+    rankingTableOutput.innerHTML = html + '</tbody></table>';
 }
 
-function extractStudentAnalysisData(studentName, weakRateThOpt) {
-    const stuEntry = findStudentByNameOrDisplay(combinedStudentData, studentName);
+function extractStudentAnalysisData(studentName, weakRateThOpt,
+    stuEntry = findStudentByNameOrDisplay(combinedStudentData, studentName)) {
     if (!stuEntry) return null;
     let wt = parseFloat(weakRateThOpt); if (isNaN(wt)) wt = 0.6; wt = Math.min(0.9, Math.max(0.1, wt));
     const anchorSN = getTotalSubjectName(allSubjectHeaders, combinedStudentData);
@@ -8640,6 +8696,13 @@ document.getElementById('pdfFileInput').addEventListener('change', function(e) {
 
 // Personal analysis
 document.getElementById('filterBtn').addEventListener('click', displayPersonalResults);
+document.getElementById('personalClassFilter').addEventListener('change', function() {
+    const students = getPersonalStudents(combinedStudentData);
+    const input = document.getElementById('nameSearch');
+    if (input.value.trim() && !findStudentByNameOrDisplay(students, input.value)) input.value = '';
+    updatePersonalStudentOptions(students);
+    displayPersonalResults();
+});
 document.getElementById('searchContextRange').addEventListener('input', function() { document.getElementById('rangeValueDisplay').textContent = this.value + ' 名'; });
 document.getElementById('weakRateThreshold').addEventListener('input', function() { document.getElementById('weakRateThresholdDisplay').textContent = Number(this.value).toFixed(2); });
 document.getElementById('copyAnalysisBtn').addEventListener('click', function() {
