@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>学情可视化展板</title>
     <link rel="preload" href="reports.js" as="script">
-    <link rel="preload" href="class-comparison.js?v=subject-top-ten" as="script">
+    <link rel="preload" href="class-comparison.js?v=top-ten-names" as="script">
     <link rel="preload" href="seating.js" as="script">
     <link rel="preload" href="seating-data.js" as="script">
     <link rel="preload" href="seating-engine.js" as="script">
-    <link rel="stylesheet" href="app.css?v=personal-toolbar">
+    <link rel="stylesheet" href="app.css?v=top-ten-names">
     <script src="app-core.js"></script>
     <script src="workspace-manager.js?v=workspace-entry"></script>
     <script src="echarts.min.js"></script>
@@ -285,6 +285,8 @@
             <label for="classDiffTopTenClass">班级</label>
             <select id="classDiffTopTenClass"><option value="">全部班级</option></select>
             <span id="classDiffTopTenSummary" class="class-top-ten-summary" role="status"></span>
+            <button type="button" class="class-top-ten-details" id="classDiffTopTenDetails"
+                aria-pressed="false" aria-controls="classDiffTopTenTable">显示详情</button>
         </div>
         <div class="scroll-container class-top-ten-scroll" tabindex="0" role="region" aria-labelledby="classDiffTopTenTitle">
             <table class="class-top-ten-table" id="classDiffTopTenTable" aria-labelledby="classDiffTopTenTitle">
@@ -1145,7 +1147,7 @@
 </div>
 
 <script src="reports.js"></script>
-<script src="class-comparison.js?v=subject-top-ten"></script>
+<script src="class-comparison.js?v=top-ten-names"></script>
 <script src="seating-data.js"></script>
 <script src="seating-engine.js"></script>
 <script src="seating.js"></script>

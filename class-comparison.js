@@ -893,7 +893,7 @@ function renderClassDiffTopTen() {
         .map(column => ({ label: column.label, entries: rankClassDiffScores(students, column.score)
             .filter(entry => entry.rank <= 10) }));
     const rowCount = Math.max(...columns.map(column => column.entries.length));
-    const showClass = !classSelect.value && classes.size > 1;
+    const showClass = !classSelect.value && classes.size > 0;
     const table = document.getElementById('classDiffTopTenTable');
 
     table.tHead.innerHTML = `<tr>${columns.map(column => `<th scope="col">${escapeHtml(column.label)}</th>`).join('')}</tr>`;
@@ -901,23 +901,33 @@ function renderClassDiffTopTen() {
     for (let index = 0; index < rowCount; index++) {
         const cells = columns.map(column => {
             const entry = column.entries[index];
-            if (!entry) return '<td class="class-top-ten-empty">—</td>';
+            if (!entry) return '<td></td>';
+            const tied = column.entries[index - 1]?.rank === entry.rank || column.entries[index + 1]?.rank === entry.rank;
+            const tieLabel = tied ? `<span class="class-top-ten-tie">并列第 ${entry.rank}</span>` : '';
             const classLabel = showClass
-                ? `<span class="class-top-ten-class">${escapeHtml(normalizeClassName(entry.student.class))}</span>`
+                ? `<span class="class-top-ten-detail class-top-ten-class">${escapeHtml(normalizeClassName(entry.student.class))}</span>`
                 : '';
-            return `<td><div class="class-top-ten-entry"><span class="class-top-ten-rank">${entry.rank}</span><span>${escapeHtml(entry.student.name)}${classLabel}</span><span class="class-top-ten-score">${entry.score}</span></div></td>`;
+            return `<td><div class="class-top-ten-entry">
+                <span class="class-top-ten-detail class-top-ten-rank">${entry.rank}</span>
+                <span class="class-top-ten-name">${escapeHtml(entry.student.name)}</span>
+                ${tieLabel}${classLabel}
+                <span class="class-top-ten-detail class-top-ten-score">${entry.score}</span>
+            </div></td>`;
         });
         rows.push(`<tr>${cells.join('')}</tr>`);
     }
     table.tBodies[0].innerHTML = rows.join('') || `<tr><td colspan="${columns.length}">当前范围暂无有效成绩</td></tr>`;
-    const scope = classSelect.selectedOptions[0].textContent;
     const totalNote = rowCount && !columns[0].entries.length ? ' · 暂无总分成绩' : '';
-    document.getElementById('classDiffTopTenSummary').textContent =
-        `${scope} · ${students.length} 人 · 含并列第 10 名${totalNote}`;
+    document.getElementById('classDiffTopTenSummary').textContent = `${students.length} 人${totalNote}`;
     table.parentElement.scrollTop = 0;
 }
 
 document.getElementById('classDiffTopTenClass').addEventListener('change', renderClassDiffTopTen);
+document.getElementById('classDiffTopTenDetails').addEventListener('click', function() {
+    const showDetails = this.getAttribute('aria-pressed') !== 'true';
+    this.setAttribute('aria-pressed', String(showDetails));
+    document.getElementById('classDiffTopTenTable').classList.toggle('show-details', showDetails);
+});
 
 function renderClassDiffRankDistribution() {
     if (!combinedStudentData.length) return;
