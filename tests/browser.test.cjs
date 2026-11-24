@@ -253,6 +253,13 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         const top = page.locator('#classDiffTopTenTable');
         const classChoice = page.locator('#classDiffTopTenClass');
         const details = page.getByRole('button', {name:'显示详情'});
+        const exportTopTen = page.getByRole('button', {name:'导出图片', exact:true});
+        async function downloadTopTen() {
+            const pending = page.waitForEvent('download');
+            await exportTopTen.click();
+            const download = await pending;
+            return {name:download.suggestedFilename(), bytes:fs.readFileSync(await download.path())};
+        }
         const getRanks = (column) => top.locator(`tbody td:nth-child(${column}) .class-top-ten-rank:visible`).allTextContents();
         const mathNames = top.locator('tbody td:nth-child(3) .class-top-ten-name');
         assert.deepEqual(await top.locator('th').allTextContents(), ['总分','英语','数学','物理']);
@@ -263,6 +270,35 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.deepEqual(await top.locator('tbody td:nth-child(3) .class-top-ten-tie:visible').allTextContents(),
             ['并列第 5','并列第 5','并列第 10','并列第 10']);
         const namesBeforeDetails = await mathNames.allTextContents();
+        assert.equal(await top.locator('th').first().evaluate(header => {
+            const style = getComputedStyle(header);
+            return [style.color, style.fontWeight, style.fontSize];
+        }).then(style => style.join(' ')), 'rgb(255, 255, 255) 700 14px');
+        await page.evaluate(() => {
+            const original = downloadHeatmapReportImage;
+            downloadHeatmapReportImage = (svg, name) => {
+                window.lastTopTenImageSvg = svg;
+                original(svg, name);
+            };
+            document.querySelector('#classDiffTopTenTable').parentElement.style.maxHeight = '180px';
+        });
+        const snapshotTopTen = () => page.evaluate(() => {
+            const svg = new DOMParser().parseFromString(window.lastTopTenImageSvg, 'image/svg+xml');
+            return {
+                width:Number(svg.documentElement.getAttribute('width')),
+                height:Number(svg.documentElement.getAttribute('height')),
+                texts:[...svg.querySelectorAll('text')].map(node => [node.textContent, Number(node.getAttribute('y'))])
+            };
+        });
+        const compactImage = await downloadTopTen();
+        assert.equal(compactImage.name, '各科前十_前十测试_全部班级_名单.png');
+        assert.equal(compactImage.bytes.subarray(1,4).toString(), 'PNG');
+        const compactSvg = await snapshotTopTen();
+        assert.equal(compactImage.bytes.readUInt32BE(16), compactSvg.width * 2);
+        assert.equal(compactImage.bytes.readUInt32BE(20), compactSvg.height * 2);
+        assert.ok(compactSvg.texts.some(([text, y]) => text === '学生10' && y > 180), 'full cutoff tie must be in the image');
+        assert.ok(compactSvg.texts.some(([text]) => text === '并列第 10'));
+        assert.ok(!compactSvg.texts.some(([text]) => ['612','01班','02班'].includes(text)));
         await details.click();
         assert.equal(await details.getAttribute('aria-pressed'), 'true');
         assert.deepEqual(await mathNames.allTextContents(), namesBeforeDetails);
@@ -286,6 +322,23 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.deepEqual(await top.locator('tbody td:nth-child(3) .class-top-ten-score').allTextContents(), ['104','102','99','97','95','94']);
         assert.deepEqual(await top.locator('tbody td:first-child .class-top-ten-score').allTextContents(), ['611','609','607','605','603','601']);
         assert.deepEqual(await getRanks(4), [], 'absent class scores must not be ranked');
+        const detailedImage = await downloadTopTen();
+        assert.equal(detailedImage.name, '各科前十_前十测试_02班_详情.png');
+        assert.equal(detailedImage.bytes.subarray(1,4).toString(), 'PNG');
+        const detailedSvg = await snapshotTopTen();
+        assert.ok(detailedSvg.texts.some(([text]) => text === '611'));
+        assert.ok(!detailedSvg.texts.some(([text]) => ['612','学生0','并列第 10'].includes(text)));
+        await top.evaluate(table => {
+            const body = table.tBodies[0];
+            const template = body.rows[0];
+            const longList = document.createDocumentFragment();
+            for (let row = 0; row < 221; row++) longList.append(template.cloneNode(true));
+            longList.lastElementChild.querySelector('.class-top-ten-name').textContent = '末行验证';
+            body.append(longList);
+        });
+        const longImage = await downloadTopTen();
+        assert.match(longImage.name, /\.svg$/);
+        assert.match(longImage.bytes.toString(), /末行验证/);
         await classChoice.selectOption({label:'全部班级'});
         assert.equal((await getRanks(3)).length, 11);
         await page.locator('#classDiffBatchPicker input[value="top-ten-next"]').check();
@@ -305,6 +358,6 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.deepEqual(await getRanks(1), [], 'missing total must not be inferred from subjects');
         assert.deepEqual(await getRanks(2), ['1']);
         assert.deepEqual(errors,[],'browser uncaught exceptions');
-        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, one-line personal toolbar, personal class filter, class top ten compact/detail views, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
+        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, one-line personal toolbar, personal class filter, class top ten compact/detail and PNG export, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
     } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(error=>{console.error(error);process.exitCode=1});
