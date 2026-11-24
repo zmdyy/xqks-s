@@ -578,15 +578,40 @@
         .class-top-ten-toolbar h3 { margin-right:auto; font-size:1.2em; color:var(--primary); }
         .class-top-ten-toolbar select { min-width:110px; padding:4px 8px; }
         .class-top-ten-summary { color:var(--text-secondary); font-size:12px; }
+        .class-top-ten-details {
+            border:1px solid var(--border);
+            border-radius:var(--radius-sm);
+            background:var(--surface);
+            color:var(--primary);
+            padding:4px 9px;
+            font:inherit;
+            font-size:12px;
+            cursor:pointer;
+        }
+        .class-top-ten-details:hover, .class-top-ten-details[aria-pressed="true"] { background:#e8f0fe; border-color:#b8cce8; }
         .class-top-ten-scroll { max-height:min(54vh, 430px); overflow:auto; }
         .class-top-ten-table { margin:0; border-collapse:separate; border-spacing:0; }
-        .class-top-ten-table th, .class-top-ten-table td { min-width:132px; height:36px; padding:0 8px; white-space:nowrap; }
-        .class-top-ten-table th { position:sticky; top:0; z-index:1; background:var(--primary); }
-        .class-top-ten-table .class-top-ten-entry { display:grid; grid-template-columns:2ch 1fr auto; align-items:center; gap:6px; line-height:1.2; text-align:left; }
-        .class-top-ten-rank, .class-top-ten-score { font-variant-numeric:tabular-nums; font-weight:600; }
-        .class-top-ten-rank { color:var(--primary); }
-        .class-top-ten-class { color:var(--text-secondary); font-size:11px; margin-left:4px; }
-        .class-top-ten-empty { color:var(--text-secondary); }
+        .class-top-ten-table th, .class-top-ten-table td {
+            min-width:106px;
+            height:36px;
+            padding:0 10px;
+            border:0;
+            border-right:1px solid #eef2f5;
+            border-bottom:1px solid #e9eef3;
+            white-space:nowrap;
+        }
+        .class-top-ten-table th:last-child, .class-top-ten-table td:last-child { border-right:0; }
+        .class-top-ten-table th { position:sticky; top:0; z-index:1; color:var(--primary); background:#edf3fa; }
+        .class-top-ten-table .class-top-ten-entry { display:flex; align-items:center; gap:6px; line-height:1.2; text-align:left; }
+        .class-top-ten-name { font-size:14px; font-weight:600; }
+        .class-top-ten-tie { color:#53677c; background:#edf3f9; border-radius:var(--radius-xs); padding:2px 4px; font-size:11px; }
+        .class-top-ten-table:not(.show-details) .class-top-ten-detail,
+        .class-top-ten-table.show-details .class-top-ten-tie { display:none; }
+        .class-top-ten-table.show-details th, .class-top-ten-table.show-details td { min-width:132px; }
+        .class-top-ten-rank, .class-top-ten-score { font-variant-numeric:tabular-nums; font-weight:600; color:var(--primary); }
+        .class-top-ten-rank { min-width:2ch; }
+        .class-top-ten-score { margin-left:auto; }
+        .class-top-ten-class { color:var(--text-secondary); font-size:11px; }
         .analysis-anchor-section { scroll-margin-top:18px; }
         .analysis-anchor-section.analysis-section-pulse { outline:2px solid rgba(28,61,92,.18); outline-offset:3px; border-radius:var(--radius); }
         @media (max-width: 900px) {
