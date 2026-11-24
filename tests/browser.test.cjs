@@ -104,6 +104,24 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         const downloadPromise=page.waitForEvent('download'); await page.click('#collectiveHeatmapExportPngBtn');
         const download=await downloadPromise; const image=fs.readFileSync(await download.path());
         assert.equal(image.subarray(1,4).toString(),'PNG','heatmap export must remain valid PNG');
+        async function downloadHeatmapSvg() {
+            const pending = page.waitForEvent('download');
+            await page.click('#collectiveHeatmapExportSvgBtn');
+            return fs.readFileSync(await (await pending).path(), 'utf8');
+        }
+        const allClassesSvg = await downloadHeatmapSvg();
+        const rosterIndex = allClassesSvg.indexOf('异常学生名单');
+        assert.ok(rosterIndex > allClassesSvg.indexOf('</svg>'), 'the roster follows the original chart');
+        const allClassRoster = allClassesSvg.slice(rosterIndex);
+        assert.match(allClassRoster, />01班<.*同名（01班）.*>02班<.*赵六/);
+        assert.doesNotMatch(allClassRoster, /识别依据|低于阈值|个性异常/);
+        assert.ok(!await page.locator('#collectiveHeatmapChart').textContent().then(text=>text.includes('异常学生名单')));
+        await page.selectOption('#collectiveClassFilter','02班');
+        const selectedSvg = await downloadHeatmapSvg();
+        const selectedRoster = selectedSvg.slice(selectedSvg.indexOf('异常学生名单'));
+        assert.match(selectedRoster, />02班<.*赵六/);
+        assert.doesNotMatch(selectedRoster, /01班|李四/);
+        await page.selectOption('#collectiveClassFilter','');
         assert.equal(await page.evaluate(()=>getComputedStyle(document.body).fontFamily),await page.evaluate(()=>getComputedStyle(document.querySelector('select')).fontFamily),'controls must share the body font');
         await page.evaluate(async()=>{const original=AppCore.storage.write;try{AppCore.storage.write=async()=>{throw new Error('测试存储不足')};if(await persistBatches())throw new Error('失败写入返回成功')}finally{AppCore.storage.write=original}});
         assert.match(await page.locator('#batchStatus').textContent(),/保存失败/);
