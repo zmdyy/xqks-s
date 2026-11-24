@@ -919,6 +919,7 @@ function renderClassDiffTopTen() {
     table.tBodies[0].innerHTML = rows.join('') || `<tr><td colspan="${columns.length}">当前范围暂无有效成绩</td></tr>`;
     const totalNote = rowCount && !columns[0].entries.length ? ' · 暂无总分成绩' : '';
     document.getElementById('classDiffTopTenSummary').textContent = `${students.length} 人${totalNote}`;
+    document.getElementById('classDiffTopTenExport').disabled = !rowCount;
     table.parentElement.scrollTop = 0;
 }
 
@@ -928,6 +929,118 @@ document.getElementById('classDiffTopTenDetails').addEventListener('click', func
     this.setAttribute('aria-pressed', String(showDetails));
     document.getElementById('classDiffTopTenTable').classList.toggle('show-details', showDetails);
 });
+
+function buildClassDiffTopTenExportSvg(table, caption) {
+    const fontFamily = getComputedStyle(table).fontFamily;
+    const layout = document.createElement('canvas').getContext('2d');
+    if (!layout) throw new Error('当前浏览器无法生成图片');
+    const fontStyles = {
+        title: { size:22, weight:700, color:'#193a56' },
+        caption: { size:13, weight:400, color:'#53677c' },
+        header: { size:14, weight:700, color:'#ffffff' },
+        name: { size:14, weight:600, color:'#1a1a2e' },
+        rank: { size:13, weight:600, color:'#193a56' },
+        class: { size:11, weight:400, color:'#53677c' },
+        score: { size:13, weight:600, color:'#193a56' },
+        tie: { size:11, weight:400, color:'#53677c' }
+    };
+    function measure(text, key) {
+        const style = fontStyles[key];
+        layout.font = `${style.weight} ${style.size}px ${fontFamily}`;
+        return Math.ceil(layout.measureText(text).width);
+    }
+    function drawText(text, key, x, y, anchor = 'start') {
+        const {size, weight, color} = fontStyles[key];
+        return `<text x="${x}" y="${y}" dominant-baseline="central" text-anchor="${anchor}" font-size="${size}" font-weight="${weight}" fill="${color}">${escapeHtml(text)}</text>`;
+    }
+
+    const detailed = table.classList.contains('show-details');
+    const fields = detailed ? ['rank','name','class','score'] : ['name','tie'];
+    const headers = Array.from(table.tHead.rows[0].cells, cell => ({
+        label:cell.textContent.trim(),
+        background:getComputedStyle(cell).backgroundColor
+    }));
+    const padding = 12, gap = 6, margin = 20;
+    const widths = headers.map(header => Math.max(detailed ? 132 : 106, measure(header.label, 'header') + padding * 2));
+    const rows = Array.from(table.tBodies[0].rows, row => Array.from(row.cells, (cell, columnIndex) => {
+        const parts = [];
+        let width = padding * 2;
+        for (const key of fields) {
+            const text = cell.querySelector('.class-top-ten-' + key)?.textContent.trim();
+            if (!text) continue;
+            const partWidth = measure(text, key) + (key === 'tie' ? 8 : 0);
+            width += partWidth + (parts.length ? gap : 0);
+            parts.push({key,text,width:partWidth});
+        }
+        widths[columnIndex] = Math.max(widths[columnIndex], width);
+        return parts;
+    }));
+    const tableWidth = widths.reduce((total, width) => total + width, 0);
+    const width = Math.max(tableWidth, measure(caption, 'caption'), measure('各科前十', 'title')) + margin * 2;
+    const top = 78, headerHeight = 40, rowHeight = 36;
+    const height = top + headerHeight + rows.length * rowHeight + margin;
+    const svg = [
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${escapeHtml(fontFamily)}">`,
+        '<rect width="100%" height="100%" fill="#ffffff"/>',
+        drawText('各科前十', 'title', margin, 31),
+        drawText(caption, 'caption', margin, 57)
+    ];
+    let x = margin;
+    headers.forEach((header, index) => {
+        const cellWidth = widths[index];
+        svg.push(`<rect x="${x}" y="${top}" width="${cellWidth}" height="${headerHeight}" fill="${header.background}"/>`,
+            drawText(header.label, 'header', x + cellWidth / 2, top + headerHeight / 2, 'middle'));
+        x += cellWidth;
+    });
+    rows.forEach((row, index) => {
+        const y = top + headerHeight + index * rowHeight;
+        const center = y + rowHeight / 2;
+        const fill = index % 2 ? '#f8fafc' : '#ffffff';
+        let x = margin;
+        row.forEach((parts, columnIndex) => {
+            const cellWidth = widths[columnIndex];
+            svg.push(`<rect x="${x}" y="${y}" width="${cellWidth}" height="${rowHeight}" fill="${fill}" stroke="#e9eef3"/>`);
+            let cursor = x + padding;
+            for (const part of parts) {
+                if (part.key === 'score') {
+                    svg.push(drawText(part.text, part.key, x + cellWidth - padding, center, 'end'));
+                } else {
+                    if (part.key === 'tie') {
+                        svg.push(`<rect x="${cursor}" y="${center - 9}" width="${part.width}" height="18" rx="4" fill="#edf3f9"/>`);
+                    }
+                    svg.push(drawText(part.text, part.key, cursor + (part.key === 'tie' ? 4 : 0), center));
+                    cursor += part.width + gap;
+                }
+            }
+            x += cellWidth;
+        });
+    });
+    svg.push('</svg>');
+    return {svg:svg.join(''), width, height};
+}
+
+async function exportClassDiffTopTenImage() {
+    const table = document.getElementById('classDiffTopTenTable');
+    const button = document.getElementById('classDiffTopTenExport');
+    if (button.disabled) return;
+    try {
+        const scope = document.getElementById('classDiffTopTenClass').selectedOptions[0].textContent;
+        const batch = document.getElementById('batchLabelClassDiff').textContent.trim();
+        const summary = document.getElementById('classDiffTopTenSummary').textContent;
+        const mode = table.classList.contains('show-details') ? '详情' : '名单';
+        const filename = ['各科前十', batch, scope, mode].map(part => part.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)).join('_');
+        const {svg, width, height} = buildClassDiffTopTenExportSvg(table, `${batch} · ${scope} · ${summary}`);
+        // Keep exceptionally tall lists intact when a high-resolution bitmap would exceed the canvas budget.
+        if (width > 8000 || height > 8000 || width * height > 4000000) {
+            downloadCollectiveHeatmapBlob(new Blob([svg], {type:'image/svg+xml;charset=utf-8'}), filename + '.svg');
+        } else {
+            downloadHeatmapReportImage(svg, filename + '.png');
+        }
+    } catch (error) {
+        await showAlert(error.message || '图片生成失败，请重试');
+    }
+}
+document.getElementById('classDiffTopTenExport').addEventListener('click', exportClassDiffTopTenImage);
 
 function renderClassDiffRankDistribution() {
     if (!combinedStudentData.length) return;

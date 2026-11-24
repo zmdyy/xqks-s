@@ -578,7 +578,7 @@
         .class-top-ten-toolbar h3 { margin-right:auto; font-size:1.2em; color:var(--primary); }
         .class-top-ten-toolbar select { min-width:110px; padding:4px 8px; }
         .class-top-ten-summary { color:var(--text-secondary); font-size:12px; }
-        .class-top-ten-details {
+        .class-top-ten-details, .class-top-ten-export {
             border:1px solid var(--border);
             border-radius:var(--radius-sm);
             background:var(--surface);
@@ -589,6 +589,9 @@
             cursor:pointer;
         }
         .class-top-ten-details:hover, .class-top-ten-details[aria-pressed="true"] { background:#e8f0fe; border-color:#b8cce8; }
+        .class-top-ten-export { background:var(--primary); border-color:var(--primary); color:#fff; }
+        .class-top-ten-export:hover:not(:disabled) { background:var(--primary-light); }
+        .class-top-ten-export:disabled { opacity:.5; cursor:default; }
         .class-top-ten-scroll { max-height:min(54vh, 430px); overflow:auto; }
         .class-top-ten-table { margin:0; border-collapse:separate; border-spacing:0; }
         .class-top-ten-table th, .class-top-ten-table td {
@@ -601,7 +604,19 @@
             white-space:nowrap;
         }
         .class-top-ten-table th:last-child, .class-top-ten-table td:last-child { border-right:0; }
-        .class-top-ten-table th { position:sticky; top:0; z-index:1; color:var(--primary); background:#edf3fa; }
+        .class-top-ten-table th {
+            position:sticky;
+            top:0;
+            z-index:1;
+            height:40px;
+            color:#fff;
+            background:#2b4e6b;
+            border-right-color:#45647c;
+            border-bottom:2px solid #1c3d5c;
+            font-size:14px;
+            font-weight:700;
+        }
+        .class-top-ten-table th:first-child { background:#193a56; }
         .class-top-ten-table .class-top-ten-entry { display:flex; align-items:center; gap:6px; line-height:1.2; text-align:left; }
         .class-top-ten-name { font-size:14px; font-weight:600; }
         .class-top-ten-tie { color:#53677c; background:#edf3f9; border-radius:var(--radius-xs); padding:2px 4px; font-size:11px; }
