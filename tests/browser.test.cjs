@@ -95,6 +95,37 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         const personalRows = page.locator('#rankingTableOutput tbody tr');
         const nameInput = page.locator('#nameSearch');
         const personalNames = page.locator('#nameSearchSuggest .student-suggest-name');
+        const personalToolbar = page.locator('#personalToolbar');
+        const toolbarGeometry = () => personalToolbar.evaluate(toolbar => {
+            const centers = Array.from(toolbar.children, child => {
+                const rect = child.getBoundingClientRect();
+                return rect.top + rect.height / 2;
+            });
+            return {
+                spread: Math.max(...centers) - Math.min(...centers),
+                overflow: toolbar.scrollWidth - toolbar.clientWidth
+            };
+        });
+        for (const width of [1920, 1515, 1440, 1280]) {
+            await page.setViewportSize({width,height:1000});
+            const {spread, overflow} = await toolbarGeometry();
+            assert.ok(spread <= 1 && overflow <= 1, `at ${width}px personal controls should fit one line: ${spread}, ${overflow}`);
+        }
+        await page.setViewportSize({width:390,height:1000});
+        const narrow = await toolbarGeometry();
+        assert.ok(narrow.spread <= 1 && narrow.overflow > 0, 'on narrow screens the toolbar should scroll horizontally');
+        await nameInput.fill('同名');
+        await personalNames.first().waitFor();
+        assert.equal(await personalNames.first().evaluate(item => {
+            const rect = item.getBoundingClientRect();
+            return Boolean(document.elementFromPoint(rect.left + 4, rect.top + 4)?.closest('#nameSearchSuggest'));
+        }), true, 'the name menu must be clickable below the scrolling toolbar');
+        await personalToolbar.evaluate(toolbar => { toolbar.scrollLeft = toolbar.scrollWidth; });
+        await page.locator('#nameSearchSuggest').waitFor({state:'hidden'});
+        await nameInput.fill('');
+        await page.setViewportSize({width:1440,height:1000});
+        await personalToolbar.evaluate(toolbar => { toolbar.scrollLeft = 0; });
+        assert.deepEqual(await page.locator('#rankType option').allTextContents(), ['年级','全校','班内']);
         assert.deepEqual(await personalClass.locator('option').allTextContents(), ['全部班级','01班','02班']);
         assert.equal(await personalRows.count(), 5);
         await personalClass.selectOption({label:'02班'});
@@ -254,6 +285,6 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.deepEqual(await getRanks(1), [], 'missing total must not be inferred from subjects');
         assert.deepEqual(await getRanks(2), ['1']);
         assert.deepEqual(errors,[],'browser uncaught exceptions');
-        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, personal class filter, class top ten, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
+        console.log('PASS browser: three upload buttons, responsive upload cards, worker import, atomic multi-file merge, zero scores, class identity, invalid/repeated imports, save/reload, raw headers, PDF bytes, all 8 tabs, one-line personal toolbar, personal class filter, class top ten, heatmap, progress, 7 report types, seating interaction/snapshot, delayed module loads, storage order and legacy migration');
     } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(error=>{console.error(error);process.exitCode=1});
