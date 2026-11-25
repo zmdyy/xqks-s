@@ -1219,7 +1219,7 @@ function renderClassReadableReport(className, compareBatchId) {
     html.push('</div>');
     html.push('<div class="sr-section"><h3>一、学生榜单</h3>');
     html.push('<div class="sr-class-leaderboard"><h4 id="classReportTopTenTitle">班内各科前十</h4>');
-    html.push('<p class="sr-class-top-ten-legend"><span class="class-top-ten-grade-top">金色姓名</span>表示年级前十。没有原表年级名次时，按该批次各班有效成绩排名。</p>');
+    html.push('<p class="sr-class-top-ten-legend"><span class="class-top-ten-grade-top">金色姓名</span>表示年级前十。</p>');
     html.push('<div class="scroll-container class-top-ten-scroll sr-class-top-ten-scroll" tabindex="0" role="region" aria-labelledby="classReportTopTenTitle">');
     html.push('<table class="class-top-ten-table" id="classReportTopTenTable" aria-labelledby="classReportTopTenTitle"><thead></thead><tbody></tbody></table></div></div>');
     if (hasCompare) {
