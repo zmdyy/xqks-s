@@ -93,6 +93,75 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.deepEqual(await page.locator('#tab-personal .controls label').allTextContents(), ['学生姓名：','排名范围：','排名类型：']);
         assert.deepEqual(await page.locator('#rankType option').allTextContents(), ['级名','校名','班名']);
         assert.equal(await page.locator('#personalClassFilter').count(), 0);
+        await page.click('[data-tab="tab-trend"]');
+        const trendGaps = await page.evaluate(() => {
+            const saved = DataPool.batches;
+            const mode = document.getElementById('trendDisplayMode');
+            const avg = document.getElementById('trendShowGradeAvg');
+            const style = document.getElementById('trendPointStyleSelect');
+            const savedOptions = [mode.value, avg.checked, style.value];
+            const labels = ['七下期中','七下期末','八上期中','八上期末','八下期中'];
+            const grades = (score, grade = 'A') => ({score,grade});
+            const subjectRows = [
+                {},
+                {'历史':grades(81), '英语笔试':grades(61), '生物':grades(76)},
+                {'物理':grades(77), '数学':grades(0,'C')},
+                {'历史':grades(90,'A+'), '听说':grades(21), '地理':grades(62)},
+                {}
+            ];
+            const snapshot = id => {
+                const el = document.getElementById(id === 'bioGeo' ? 'bioGeoRankChart' : id + 'RankChart');
+                if (el.parentElement.style.display === 'none') return null;
+                const options = echarts.getInstanceByDom(el).getOption();
+                return {labels:options.xAxis[0].data,
+                    series:options.series.map(s => ({name:s.name,type:s.type,data:s.data,connectNulls:s.connectNulls,symbol:s.symbol}))};
+            };
+            try {
+                DataPool.batches = labels.map((label, i) => ({
+                    id:'trend-'+i, label,
+                    combinedStudentData:[
+                        {name:'趋势学生',class:'01班',subjects:{总分:grades(300),...subjectRows[i]}},
+                        {name:'同组学生',class:'01班',subjects:{总分:grades(410),物理:grades(95),历史:grades(99)}}
+                    ]
+                }));
+                mode.value = 'ranking';
+                style.value = 'none';
+                refreshTrendTab();
+                const rank = {
+                    physics:snapshot('physics'), history:snapshot('history'), english:snapshot('english'),
+                    bioGeo:snapshot('bioGeo'), chemistry:snapshot('chemistry'),
+                    printLabels:[...cloneTrendChartSvg('physicsRankChart').querySelectorAll('text')].map(el => el.textContent)
+                };
+                mode.value = 'score';
+                avg.checked = true;
+                updateTrendDisplay();
+                const score = {math:snapshot('math'), history:snapshot('history')};
+                mode.value = 'grade';
+                updateTrendDisplay();
+                return {rank,score,grade:snapshot('history')};
+            } finally {
+                DataPool.batches = saved;
+                [mode.value, avg.checked, style.value] = savedOptions;
+                refreshTrendTab();
+            }
+        });
+        assert.deepEqual(trendGaps.rank.physics.labels, ['八上期中']);
+        assert.deepEqual(trendGaps.rank.physics.series, [{name:'物理',type:'line',data:[2],connectNulls:false,symbol:'circle'}]);
+        assert.equal(trendGaps.rank.chemistry, null);
+        const gapLabels = ['七下期末','八上期中','八上期末'];
+        assert.deepEqual(trendGaps.rank.history.labels, gapLabels);
+        assert.deepEqual(trendGaps.rank.history.series[0].data, [2,null,2]);
+        assert.equal(trendGaps.rank.history.series[0].connectNulls, false);
+        assert.deepEqual(trendGaps.rank.english.labels, gapLabels);
+        assert.deepEqual(trendGaps.rank.english.series.map(s=>s.data), [[1,null,null],[null,null,1]]);
+        assert.deepEqual(trendGaps.rank.bioGeo.labels, gapLabels);
+        assert.deepEqual(trendGaps.rank.bioGeo.series.map(s=>s.data), [[1,null,null],[null,null,1]]);
+        assert.ok(trendGaps.rank.printLabels.join('').includes('八上期中'));
+        assert.ok(!trendGaps.rank.printLabels.join('').includes('七下'));
+        assert.deepEqual(trendGaps.score.math.labels, ['八上期中']);
+        assert.deepEqual(trendGaps.score.math.series[0].data, [0]);
+        assert.deepEqual(trendGaps.score.history.series.map(s=>s.data), [[81,null,90],[90,null,95]]);
+        assert.deepEqual(trendGaps.grade.series[0].data, [5,null,6]);
         await page.click('[data-tab="tab-smart"]');
         await page.fill('#smartNameSearch','赵六');
         await page.locator('#smartNameSuggest .student-suggest-item[data-display-name="赵六"]').click();
