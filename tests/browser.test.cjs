@@ -317,8 +317,18 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
                 run('progressMarkdownBtn','progressMarkdown');
                 document.getElementById('criticalSubjectFilter').value = '物理';
                 document.getElementById('criticalClassFilter').value = '01班';
-                document.getElementById('criticalLineMode').value = 'manual';
+                document.getElementById('criticalLineMode').value = 'ratio';
                 document.getElementById('criticalPassLine').value = '95';
+                document.getElementById('criticalBatch0').value = current.id;
+                document.getElementById('criticalBatch1').value = prior.id;
+                document.getElementById('criticalBatch2').value = '';
+                // Put the same-named student from the other class first in both exams.
+                otherClass.subjects.物理.score = 60;
+                current.combinedStudentData = [otherClass, ...roster];
+                prior.combinedStudentData = [prior.combinedStudentData.at(-1), ...prior.combinedStudentData.slice(0,-1)];
+                prior.combinedStudentData[0].subjects.物理.score = 70;
+                const tracked = buildCriticalAlertData('01班','物理',95,8).students.find(row => row.rawName === '榜单学生01');
+                result.criticalNamesakeScores = tracked?.points.map(point => point.score);
                 document.getElementById('criticalAlertBtn').click();
                 run('criticalMarkdownBtn','criticalMarkdown');
                 document.getElementById('corrXSubject').value = '物理';
@@ -376,6 +386,7 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.doesNotMatch(classReport.singleExamMarkdown, /### 年级名次进步前十/);
         assert.match(classReport.subjectMarkdown, /选择题答案分布[\s\S]+A：1人、B：11人/);
         assert.match(classReport.progressMarkdown, /# 进退步量化诊断[\s\S]+榜单对照 → 榜单本次[\s\S]+榜单学生03/);
+        assert.deepEqual(classReport.criticalNamesakeScores, [99,99]);
         assert.match(classReport.criticalMarkdown, /# 临界生预警诊断[\s\S]+各次考试预警线/);
         assert.match(classReport.correlationMarkdown, /# 学科关联诊断[\s\S]+物理名次 \| 历史名次/);
 
