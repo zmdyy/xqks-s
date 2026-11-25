@@ -12,10 +12,10 @@ const chart={getWidth:()=>width,getHeight:()=>height,getDataURL:()=> 'data:image
 const chartEl={__chart:chart,clientWidth:300};
 const elements={collectiveHeatmapChart:chartEl,collectiveHeatmapExportPngBtn:pngButton,collectiveHeatmapExportSvgBtn:svgButton,collectiveHeatmapMode:{value:'rate'},collectiveClassFilter:{value:''},collectiveHeatmapOnlyAbnormal:{checked:false}};
 class ExportImage{set src(url){(async()=>{try{this.native=await loadImage(Buffer.from(await urls.get(url).text()));this.onload();}catch(e){this.onerror(e);}})();}}
-const alpha={name:'同名学生',className:'801'}, beta={name:'同名学生',className:'02班'}, gamma={name:'学生<&>',className:'02班'};
+const alpha={name:'同名学生',className:'801',tierLabel:'A+'}, beta={name:'同名学生',className:'02班'}, gamma={name:'学生<&>',className:'02班',tierLabel:'B等级'};
 const questions=[
     {label:'24题',order:24,isAbnormal:true,individualEntry:{affected:[gamma]}},
-    {label:'17题',order:17,isAbnormal:true,commonEntry:{affected:[alpha,beta]},individualEntry:{affected:[alpha]}},
+    {label:'17题',order:17,isAbnormal:true,commonEntry:{affected:[alpha,beta]},individualEntry:{affected:[alpha,alpha]}},
     {label:'18题',order:18,isAbnormal:false}
 ];
 const fd={nameField:'姓名',classField:'班级',data:[alpha,beta,gamma].map(s=>({'姓名':s.name,'班级':s.className}))};
@@ -40,10 +40,11 @@ for(const name of ['setCollectiveHeatmapExportEnabled','collectCollectiveHeatmap
  assert.equal(png.height,svgHeight*4);
  const classOne=svg.indexOf('>01班</text>'), classTwo=svg.indexOf('>02班</text>');
  assert.ok(classOne >= 0 && classTwo > classOne);
- assert.match(svg.slice(classOne,classTwo),/17题.*同名学生（01班）/);
- assert.match(svg.slice(classTwo),/17题.*同名学生（02班）.*24题.*学生&lt;&amp;&gt;/);
- assert.equal((svg.match(/同名学生（01班）/g)||[]).length,1,'a student flagged twice must be listed once');
- assert.doesNotMatch(svg,/>18题<|识别依据|低于阈值|个性异常/);
+ assert.match(svg.slice(classOne,classTwo),/共性异常学生.*个性异常学生（分层）.*17题.*同名学生（01班）.*A\+：同名学生（01班）/);
+ assert.match(svg.slice(classTwo),/17题.*同名学生（02班）.*24题.*B：学生&lt;&amp;&gt;/);
+ assert.equal((svg.match(/同名学生（01班）/g)||[]).length,2,'one appearance per category, duplicate entries within a category removed');
+ assert.match(svg,/同时符合两类异常的学生会在两列分别列出/);
+ assert.doesNotMatch(svg,/>18题<|识别依据|低于阈值/);
  // Never silently shrink a large chart below 2x. SVG remains available.
  width=10000;height=1200;await context.exportCollectiveHeatmap('png');assert.equal(downloads.length,2);assert.match(errors.at(-1),/矢量 SVG/);assert.equal(pngButton.disabled,false);await context.exportCollectiveHeatmap('svg');assert.equal(downloads.length,3);assert.match(await downloads.at(-1).blob.text(),/width="10000"/);
  // Student mode retains filename/filter semantics and pixel scaling.

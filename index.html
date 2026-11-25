@@ -5910,39 +5910,48 @@ function collectCollectiveHeatmapExportRosters(model, onlyAbnormal) {
         if (!classesByName.has(name)) classesByName.set(name, new Set());
         classesByName.get(name).add(AppCore.classKey(row[fd.classField]));
     }
-
     const groups = new Map();
     const questions = sortCollectiveHeatmapQuestions(model.questions.filter(question => !onlyAbnormal || question.isAbnormal));
+    const gradeOrder = ['A+','A','A-','B+','B','B-','C+','C','C-','D+','D','D-','E'];
+    const sortNames = names => [...names].sort((a,b) => a.localeCompare(b,'zh-CN'));
     for (const question of questions) {
         const namesByClass = new Map();
-        const affected = [...(question.commonEntry?.affected || []), ...(question.individualEntry?.affected || [])];
-        for (const student of affected) {
-            const name = AppCore.text(student.name);
-            if (!name) continue;
-            const classKey = AppCore.classKey(student.className);
-            const className = AppCore.classLabel(student.className, '未填写班级');
-            if (!groups.has(classKey)) groups.set(classKey, {className, questions:[]});
-            if (!namesByClass.has(classKey)) namesByClass.set(classKey, new Set());
-            const displayName = classesByName.get(name)?.size > 1 ? `${name}（${className}）` : name;
-            namesByClass.get(classKey).add(displayName);
+        for (const [kind, students] of [['common', question.commonEntry?.affected || []], ['individual', question.individualEntry?.affected || []]]) {
+            for (const student of students) {
+                const name = AppCore.text(student.name);
+                if (!name) continue;
+                const classKey = AppCore.classKey(student.className);
+                const className = AppCore.classLabel(student.className, '未填写班级');
+                if (!groups.has(classKey)) groups.set(classKey, {className, questions:[]});
+                if (!namesByClass.has(classKey)) namesByClass.set(classKey, {common:new Set(), individual:new Map()});
+                const entry = namesByClass.get(classKey);
+                const displayName = classesByName.get(name)?.size > 1 ? `${name}（${className}）` : name;
+                if (kind === 'common') entry.common.add(displayName);
+                else {
+                    const grade = AppCore.text(student.tierLabel).replace(/等级$/,'').trim() || '未匹配等级';
+                    if (!entry.individual.has(grade)) entry.individual.set(grade,new Set());
+                    entry.individual.get(grade).add(displayName);
+                }
+            }
         }
-        for (const [classKey, names] of namesByClass) {
-            groups.get(classKey).questions.push({
-                label:question.label,
-                names:[...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))
-            });
+        for (const [classKey, entry] of namesByClass) {
+            const rank = grade => { const n=gradeOrder.indexOf(grade.toUpperCase()); return n<0?gradeOrder.length:n; };
+            const individual = [...entry.individual].sort(([a],[b]) => rank(a)-rank(b) || (a==='未匹配等级'?1:b==='未匹配等级'?-1:b.localeCompare(a,'zh-CN',{numeric:true}))).map(([grade,names])=>({grade,names:sortNames(names)}));
+            groups.get(classKey).questions.push({label:question.label,common:sortNames(entry.common),individual});
         }
     }
-    return [...groups.values()].sort((a, b) => a.className.localeCompare(b.className, 'zh-CN', {numeric:true}));
+    return [...groups.values()].sort((a,b) => a.className.localeCompare(b.className,'zh-CN',{numeric:true}));
 }
 
 function buildCollectiveHeatmapExportSvg(chartSvg, chartWidth, chartHeight, rosters) {
     const width = Math.max(520, chartWidth);
     const listWidth = Math.min(width - 48, 1100);
     const left = (width - listWidth) / 2;
-    const questionWidth = 136, lineHeight = 22;
+    const questionWidth = Math.min(112, Math.floor(listWidth * .19)), lineHeight = 22;
+    const commonWidth = Math.floor((listWidth - questionWidth) * .44);
+    const individualWidth = listWidth - questionWidth - commonWidth;
+    const commonX = left + questionWidth, individualX = commonX + commonWidth;
     const textContext = document.createElement('canvas').getContext('2d');
-
     function wrap(parts, maxWidth, divider, weight) {
         if (textContext) textContext.font = `${weight} 14px ${AppCore.FONT}`;
         const measure = text => textContext ? textContext.measureText(text).width : Array.from(text).length * 14;
@@ -5950,12 +5959,8 @@ function buildCollectiveHeatmapExportSvg(chartSvg, chartWidth, chartHeight, rost
         let line = '';
         function append(part, separator) {
             const next = line ? line + separator + part : part;
-            if (line && measure(next) > maxWidth) {
-                lines.push(line);
-                line = part;
-            } else {
-                line = next;
-            }
+            if (line && measure(next) > maxWidth) { lines.push(line); line = part; }
+            else line = next;
         }
         for (const part of parts) {
             if (measure(part) <= maxWidth) append(part, divider);
@@ -5968,39 +5973,50 @@ function buildCollectiveHeatmapExportSvg(chartSvg, chartWidth, chartHeight, rost
         if (line) lines.push(line);
         return lines;
     }
-
     function text(value, x, y, {size = 14, weight = 400, fill = '#1f2937'} = {}) {
         return `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}">${escapeHtml(value)}</text>`;
     }
-
     let y = chartHeight + 25;
-    const sections = [text('异常学生名单', left, y + 20, {size:20, weight:700, fill:'#193a56'})];
+    const sections = [text('异常学生名单',left,y+20,{size:20,weight:700,fill:'#193a56'})];
     y += 37;
     for (const roster of rosters) {
         sections.push(`<rect x="${left}" y="${y}" width="${listWidth}" height="30" rx="4" fill="#eaf2fa"/>`,
-            text(roster.className, left + 12, y + 20, {size:15, weight:700, fill:'#193a56'}));
+            text(roster.className,left+12,y+20,{size:15,weight:700,fill:'#193a56'}));
         y += 30;
-        roster.questions.forEach((question, index) => {
-            const questionLines = wrap(Array.from(question.label), questionWidth - 22, '', 600);
-            const nameLines = wrap(question.names, listWidth - questionWidth - 22, '、', 400);
-            const rowHeight = Math.max(questionLines.length, nameLines.length) * lineHeight + 10;
-            sections.push(`<rect x="${left}" y="${y}" width="${listWidth}" height="${rowHeight}" fill="${index % 2 ? '#f7f9fc' : '#ffffff'}" stroke="#edf1f5"/>`);
-            questionLines.forEach((line, i) => sections.push(text(line, left + 12, y + 20 + i * lineHeight, {weight:600})));
-            nameLines.forEach((line, i) => sections.push(text(line, left + questionWidth, y + 20 + i * lineHeight)));
+        sections.push(`<rect x="${left}" y="${y}" width="${listWidth}" height="32" fill="#f0f4f8"/>`,
+            text('题号',left+12,y+21,{weight:700}),
+            text('共性异常学生',commonX+10,y+21,{weight:700,fill:'#193a56'}),
+            text('个性异常学生（分层）',individualX+10,y+21,{weight:700,fill:'#193a56'}));
+        y += 32;
+        roster.questions.forEach((question,index) => {
+            const questionLines = wrap(Array.from(question.label),questionWidth-20,'',600);
+            const commonLines = wrap(question.common.length?question.common:['—'],commonWidth-20,'、',400);
+            const individualLines = question.individual.flatMap(({grade,names}) => wrap([`${grade}：${names[0]}`,...names.slice(1)],individualWidth-20,'、',400));
+            if (!individualLines.length) individualLines.push('—');
+            const rowHeight = Math.max(questionLines.length,commonLines.length,individualLines.length)*lineHeight+10;
+            sections.push(`<rect x="${left}" y="${y}" width="${listWidth}" height="${rowHeight}" fill="${index%2?'#f7f9fc':'#ffffff'}" stroke="#edf1f5"/>`,
+                `<path d="M${commonX} ${y}v${rowHeight} M${individualX} ${y}v${rowHeight}" stroke="#e0e7ef" fill="none"/>`);
+            questionLines.forEach((line,i)=>sections.push(text(line,left+12,y+20+i*lineHeight,{weight:600})));
+            commonLines.forEach((line,i)=>sections.push(text(line,commonX+10,y+20+i*lineHeight)));
+            individualLines.forEach((line,i)=>sections.push(text(line,individualX+10,y+20+i*lineHeight)));
             y += rowHeight;
         });
         y += 16;
     }
     if (!rosters.length) {
-        sections.push(text('当前筛选范围暂无异常学生', left, y + 17, {fill:'#53677c'}));
+        sections.push(text('当前筛选范围暂无异常学生',left,y+17,{fill:'#53677c'}));
         y += 32;
+    } else {
+        const notes=wrap(Array.from('注：同时符合两类异常的学生会在两列分别列出。'),listWidth-20,'',400);
+        notes.forEach((line,i)=>sections.push(text(line,left,y+17+i*lineHeight,{size:13,fill:'#53677c'})));
+        y += notes.length*lineHeight;
     }
     const height = y + 16;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${escapeHtml(AppCore.FONT)}">`
         + '<rect width="100%" height="100%" fill="#ffffff"/>'
-        + `<g transform="translate(${(width - chartWidth) / 2} 0)">${chartSvg}</g>`
-        + sections.join('') + '</svg>';
-    return {svg, width, height};
+        + `<g transform="translate(${(width-chartWidth)/2} 0)">${chartSvg}</g>`
+        + sections.join('')+'</svg>';
+    return {svg,width,height};
 }
 
 async function exportCollectiveHeatmap(format) {
