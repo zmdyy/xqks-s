@@ -1082,14 +1082,91 @@ function renderClassTotalGradeFlowTable(students, totalName, compareBatch) {
     return html;
 }
 
+function getClassReportImportedGradeRanks(batch) {
+    const ranks = new Map();
+    // Merged rows may contain automatically filled ranks from only part of the grade.
+    const uniqueStudentByName = new Map();
+    for (const student of batch?.combinedStudentData || []) {
+        const name = AppCore.text(student.name);
+        uniqueStudentByName.set(name, uniqueStudentByName.has(name) ? null : student);
+    }
+    const files = Object.values(batch?.uploadedFilesData || {})
+        .sort((a, b) => Number(b.fileType === 'main') - Number(a.fileType === 'main'));
+    for (const file of files) {
+        for (const student of file.studentData || []) {
+            const name = AppCore.text(student.name);
+            const matched = AppCore.classKey(student.class) ? student : uniqueStudentByName.get(name);
+            if (!name || !matched || !AppCore.classKey(matched.class)) continue;
+            const key = AppCore.studentKey(matched);
+            for (const [subject, data] of Object.entries(student.subjects || {})) {
+                const rank = AppCore.number(data?.gradeRank);
+                if (!Number.isInteger(rank) || rank <= 0) continue;
+                if (!ranks.has(key)) ranks.set(key, new Map());
+                const subjects = ranks.get(key);
+                if (file.fileType === 'main' || !subjects.has(subject)) subjects.set(subject, rank);
+            }
+        }
+    }
+    return ranks;
+}
+
+function buildClassReportLeaderboards(students, batch, compareBatch, columns) {
+    const currentRanks = getClassReportImportedGradeRanks(batch);
+    const previousRanks = getClassReportImportedGradeRanks(compareBatch);
+    const previousData = compareBatch?.combinedStudentData || [];
+    const previousColumns = getClassDiffTopTenSubjects(previousData, compareBatch?.allSubjectHeaders || [], true);
+    const canonicalSubject = label => /^(道法|道德与法治|政治|思想政治|思想品德)$/.test(label) ? '道德与法治' : label;
+    const previousBySubject = new Map(previousColumns.map(column => [canonicalSubject(column.label), column]));
+    const previousByStudent = new Map();
+    for (const student of previousData) {
+        const key = AppCore.studentKey(student);
+        previousByStudent.set(key, previousByStudent.has(key) ? null : student);
+    }
+    const getGradeRank = (ranks, student, column) => {
+        const bySubject = ranks.get(AppCore.studentKey(student));
+        return column.keys.map(key => bySubject?.get(key)).find(Number.isInteger) ?? null;
+    };
+
+    return columns.map(column => {
+        const classTop = rankClassDiffScores(students, column.score).filter(entry => entry.rank <= 10);
+        const classRanks = students.map(student => ({
+            student, rank:getGradeRank(currentRanks, student, column)
+        })).filter(entry => entry.rank !== null);
+        const gradeTop = classRanks.filter(entry => entry.rank <= 10).sort((a, b) => a.rank - b.rank);
+        const priorColumn = previousBySubject.get(canonicalSubject(column.label));
+        const comparable = priorColumn ? classRanks.flatMap(({student, rank}) => {
+            if (!previousByStudent.get(AppCore.studentKey(student))) return [];
+            const priorRank = getGradeRank(previousRanks, student, priorColumn);
+            if (priorRank === null) return [];
+            return [{name:getStudentDisplayName(student), compareRank:priorRank, curRank:rank, change:priorRank - rank}];
+        }) : [];
+        const improved = comparable.filter(entry => entry.change > 0)
+            .sort((a, b) => b.change - a.change || a.curRank - b.curRank || a.name.localeCompare(b.name, 'zh-CN'))
+            .slice(0, 10);
+        return {subject:column.label, classTop, gradeTop, hasGradeRanks:classRanks.length > 0, comparable, improved};
+    });
+}
+
+function renderClassReportLeaderboard(title, key, rows, entriesFor, formatEntry, emptyText) {
+    return '<div class="sr-class-leaderboard" data-class-leaderboard="' + key + '"><h4>' + title + '</h4>'
+        + '<table class="sr-table"><thead><tr><th scope="col">科目</th><th scope="col">学生名单</th></tr></thead><tbody>'
+        + rows.map(row => {
+            const entries = entriesFor(row);
+            return '<tr><th scope="row">' + escapeHtml(row.subject) + '</th><td>'
+                + (entries.length ? entries.map(entry => '<span class="sr-class-leaderboard-entry">' + formatEntry(entry) + '</span>').join('')
+                    : '<span class="sr-class-leaderboard-empty">' + emptyText(row) + '</span>')
+                + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+}
+
 function renderClassReadableReport(className, compareBatchId) {
     var output = document.getElementById('comprehensiveReadableReportOutput');
     var content = document.getElementById('comprehensiveReadableReportContent');
     if (!output || !content) return false;
-    var students = combinedStudentData.filter(function(s) { return String(s.class) === String(className); });
+    var students = combinedStudentData.filter(function(s) { return AppCore.classKey(s.class) === AppCore.classKey(className); });
     if (!students.length) return false;
-    var totalName = getTotalSubjectName(allSubjectHeaders, combinedStudentData);
-    if (!totalName) return false;
+    var columns = getClassDiffTopTenSubjects(students, allSubjectHeaders, true);
+    var totalName = columns[0].keys[0] || '';
     var batch = DataPool.getCurrentBatch ? DataPool.getCurrentBatch() : null;
     var compareBatch = getClassReportCompareBatch(compareBatchId);
     var hasCompare = !!compareBatch;
@@ -1102,12 +1179,11 @@ function renderClassReadableReport(className, compareBatchId) {
     }).filter(function(s) { return s.score != null || s.rank != null || s.grade; });
     var validScores = scores.filter(function(s) { return s.score != null; }).map(function(s) { return s.score; });
     var avgScore = validScores.length ? validScores.reduce(function(a,b){return a+b;},0) / validScores.length : null;
-    var topStudents = scores.filter(function(s) { return s.rank != null; }).sort(function(a,b){ return a.rank - b.rank; }).slice(0, 10);
-    var progressRows = hasCompare ? getClassProgressRowsForReport(students, compareBatch, totalName) : [];
-    var improvers = progressRows.filter(function(r) { return r.change > 0; }).sort(function(a,b){ return b.change - a.change; }).slice(0, 10);
-    var decliners = progressRows.filter(function(r) { return r.change < 0; }).sort(function(a,b){ return a.change - b.change; }).slice(0, 10);
+    var leaderboards = buildClassReportLeaderboards(students, batch, compareBatch, columns);
+    var totalBoard = leaderboards[0];
+    var progressRows = totalBoard.comparable;
     var subjectRankRows = getClassSubjectRankRowsForReport(className, compareBatch);
-    var title = className + '班 班级学情图文报告';
+    var title = normalizeClassName(className) + ' 班级学情图文报告';
     var html = [];
     html.push('<div class="comp-readable-report">');
     html.push('<div class="cr-cover"><div><h2>' + escapeHtml(title) + '</h2><p>' + (hasCompare ? '按“对照 → 本次”的方向，对比班级结构、总分与各科均分排名，并追踪学生年级名次进退步。' : '以班级结构、总分与各科均分排名为主线，快速判断班级当前状态。') + '</p></div>');
@@ -1115,17 +1191,34 @@ function renderClassReadableReport(className, compareBatchId) {
     html.push('<div class="sr-kpis">');
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">学生人数</div><div class="sr-kpi-value">' + students.length + '</div></div>');
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">总分均分</div><div class="sr-kpi-value">' + (avgScore == null ? '-' : avgScore.toFixed(1)) + '</div></div>');
-    html.push('<div class="sr-kpi"><div class="sr-kpi-label">年级前10</div><div class="sr-kpi-value">' + scores.filter(function(s){ return s.rank != null && s.rank <= 10; }).length + '</div></div>');
+    html.push('<div class="sr-kpi"><div class="sr-kpi-label">年级前10</div><div class="sr-kpi-value">' + (totalBoard.hasGradeRanks ? totalBoard.gradeTop.length : '—') + '</div></div>');
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">' + (hasCompare ? '可对照人数' : '均分排名项目') + '</div><div class="sr-kpi-value">' + (hasCompare ? progressRows.length : subjectRankRows.filter(function(r){ return r.currentRank != null; }).length) + '</div></div>');
     html.push('</div>');
-    html.push('<div class="sr-section"><h3>一、班级结构与分布</h3><div class="sr-grid">');
+    html.push('<div class="sr-section"><h3>一、学生榜单</h3>');
+    html.push(renderClassReportLeaderboard('班内前十', 'class', leaderboards, row => row.classTop,
+        entry => '<b>' + entry.rank + '</b> ' + escapeHtml(getStudentDisplayName(entry.student)) + '<small>' + entry.score + ' 分</small>',
+        () => '暂无有效分数'));
+    html.push(renderClassReportLeaderboard('本班进入年级前十', 'grade', leaderboards, row => row.gradeTop,
+        entry => '<b>第 ' + entry.rank + ' 名</b> ' + escapeHtml(getStudentDisplayName(entry.student)),
+        row => row.hasGradeRanks ? '本班无人进入前十' : '暂无可核对的年级名次'));
+    html.push('<div class="sr-note-box">班内前十按实际得分，同分并列。年级名次取原始成绩表的年级名次。</div>');
+    if (hasCompare) {
+        html.push(renderClassReportLeaderboard('年级名次进步前十', 'improved', leaderboards, row => row.improved,
+            entry => escapeHtml(entry.name) + '<small>' + entry.compareRank + ' → ' + entry.curRank + '</small><b class="sr-class-leaderboard-gain">↑' + entry.change + '</b>',
+            row => row.comparable.length ? '暂无名次进步' : '暂无可对照的年级名次'));
+    } else {
+        html.push('<div class="sr-class-leaderboard"><h4>年级名次进步前十</h4><div class="sr-note-box">选择对照批次后显示进步榜。</div></div>');
+    }
+    html.push('</div>');
+
+    html.push('<div class="sr-section"><h3>二、班级结构与分布</h3><div class="sr-grid">');
     html.push('<div id="classReportTierChart" class="sr-chart sr-chart-large"></div>');
     html.push('<div id="classReportDistChart" class="sr-chart sr-chart-large"></div>');
     html.push('</div>');
-    if (hasCompare) html.push(renderClassTotalGradeFlowTable(students, totalName, compareBatch));
+    if (hasCompare && totalName) html.push(renderClassTotalGradeFlowTable(students, totalName, compareBatch));
     html.push('</div>');
 
-    html.push('<div class="sr-section"><h3>二、总分/各科均分排名' + (hasCompare ? '变化' : '') + '</h3>');
+    html.push('<div class="sr-section"><h3>三、总分/各科均分排名' + (hasCompare ? '变化' : '') + '</h3>');
     if (subjectRankRows.length) {
         if (hasCompare) {
             html.push('<table class="sr-table"><thead><tr><th>科目</th><th>本次均分</th><th>本次均分排名</th><th>对照均分</th><th>对照均分排名</th><th>排名变化</th></tr></thead><tbody>');
@@ -1146,30 +1239,15 @@ function renderClassReadableReport(className, compareBatchId) {
     html.push('</div>');
 
     if (hasCompare) {
-        html.push('<div class="sr-section"><h3>三、学生年级名次变化 Top10</h3><div class="sr-grid">');
+        html.push('<div class="sr-section"><h3>四、总分年级名次变化</h3><div class="sr-grid">');
         html.push('<div id="classReportImproveChart" class="sr-chart sr-chart-large"></div>');
         html.push('<div id="classReportDeclineChart" class="sr-chart sr-chart-large"></div>');
         html.push('</div></div>');
-        html.push('<div class="sr-section"><h3>四、重点学生速览</h3>');
-        html.push('<table class="sr-table"><thead><tr><th class="sr-overview-top">本班年级排名前10</th><th class="sr-overview-top">本次名次</th><th class="sr-overview-improve sr-overview-start">进步Top10</th><th class="sr-overview-improve">进步名次</th><th class="sr-overview-decline sr-overview-start">退步Top10</th><th class="sr-overview-decline">退步名次</th></tr></thead><tbody>');
-        var maxRows = Math.max(topStudents.length, improvers.length, decliners.length, 1);
-        for (var i = 0; i < maxRows; i++) {
-            html.push('<tr><td>' + escapeHtml(topStudents[i] ? topStudents[i].name : '-') + '</td><td>' + escapeHtml(topStudents[i] ? String(topStudents[i].rank) : '-') + '</td><td class="sr-overview-start">' + escapeHtml(improvers[i] ? improvers[i].name : '-') + '</td><td style="color:#15803d;font-weight:700;">' + escapeHtml(improvers[i] ? '+' + improvers[i].change : '-') + '</td><td class="sr-overview-start">' + escapeHtml(decliners[i] ? decliners[i].name : '-') + '</td><td style="color:#b91c1c;font-weight:700;">' + escapeHtml(decliners[i] ? '-' + Math.abs(decliners[i].change) : '-') + '</td></tr>');
-        }
-        html.push('</tbody></table></div>');
-    } else {
-        html.push('<div class="sr-section"><h3>三、重点学生速览</h3>');
-        html.push('<table class="sr-table"><thead><tr><th class="sr-overview-top">本班年级排名前10</th><th class="sr-overview-top">本次名次</th></tr></thead><tbody>');
-        var currentRows = Math.max(topStudents.length, 1);
-        for (var j = 0; j < currentRows; j++) {
-            html.push('<tr><td>' + escapeHtml(topStudents[j] ? topStudents[j].name : '-') + '</td><td>' + escapeHtml(topStudents[j] ? String(topStudents[j].rank) : '-') + '</td></tr>');
-        }
-        html.push('</tbody></table></div>');
     }
     html.push('</div>');
     content.innerHTML = html.join('');
     output.dataset.backTarget = 'comprehensiveOutput';
-    output.dataset.printTitle = [className + '班', '班级学情图文报告', (batch ? batch.label : '当前批次') + (hasCompare ? '_对比_' + compareBatch.label : ''), getTodayString()].join('_');
+    output.dataset.printTitle = [normalizeClassName(className), '班级学情图文报告', (batch ? batch.label : '当前批次') + (hasCompare ? '_对比_' + compareBatch.label : ''), getTodayString()].join('_');
     document.getElementById('comprehensiveOutput').style.display = 'none';
     document.getElementById('progressOutput').style.display = 'none';
     document.getElementById('criticalOutput').style.display = 'none';
@@ -1179,24 +1257,6 @@ function renderClassReadableReport(className, compareBatchId) {
     output.style.display = 'block';
     renderClassReadableCharts(scores, students, progressRows, totalName, hasCompare);
     return true;
-}
-
-function getClassProgressRowsForReport(students, compareBatch, totalName) {
-    if (!compareBatch || !compareBatch.combinedStudentData) return [];
-    var compareTotalName = getTotalSubjectName(compareBatch.allSubjectHeaders || [], compareBatch.combinedStudentData || []) || totalName;
-    var compareMap = {};
-    compareBatch.combinedStudentData.forEach(function(s) { compareMap[String(s.name || '').trim() + '||' + normalizeClassName(s.class || '')] = s; });
-    var rows = [];
-    students.forEach(function(s) {
-        var key = String(s.name || '').trim() + '||' + normalizeClassName(s.class || '');
-        var ps = compareMap[key];
-        if (!ps) return;
-        var compareRank = getClassReportRank(ps, compareTotalName);
-        var curRank = getClassReportRank(s, totalName);
-        if (!compareRank || !curRank) return;
-        rows.push({ name: getStudentDisplayName(s), compareRank: compareRank, curRank: curRank, change: compareRank - curRank });
-    });
-    return rows;
 }
 
 function renderClassReadableCharts(scores, students, progressRows, totalName, hasCompare) {

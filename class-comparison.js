@@ -840,10 +840,10 @@ function rankClassDiffScores(students, getScore) {
     });
 }
 
-function getClassDiffTopTenSubjects(students, headers) {
+function getClassDiffTopTenSubjects(students, headers, includeRankOnly = false) {
     const score = (student, subject) => AppCore.number(student.subjects?.[subject]?.score);
-    const names = getMergedSubjectNames(students, headers)
-        .filter(name => students.some(student => Number.isFinite(score(student, name))));
+    const names = getMergedSubjectNames(students, headers).filter(name => students.some(student =>
+        Number.isFinite(score(student, name)) || (includeRankOnly && hasMeaningfulRank(student.subjects?.[name]?.gradeRank))));
 
     const total = names.find(name => name === '总分')
         || names.find(name => /^(总分|总成绩|(考试|全科|综合|学科|文化课?|年级|原始|折算|赋分)总分)/.test(name));
@@ -854,13 +854,13 @@ function getClassDiffTopTenSubjects(students, headers) {
         englishTotals.push('英语');
     }
 
-    const columns = [{ label: '总分', score: student => total ? score(student, total) : '' }];
+    const columns = [{ label: '总分', keys:total ? [total] : [], score: student => total ? score(student, total) : '' }];
     let englishShown = false;
     for (const name of names) {
         if (name === total) continue;
         if (englishTotals.length && (name === '英语' || englishTotals.includes(name) || englishParts(name))) {
             if (!englishShown) {
-                columns.push({ label: '英语', score: student => {
+                columns.push({ label: '英语', keys:englishTotals, score: student => {
                     for (const subject of englishTotals) {
                         const value = score(student, subject);
                         if (Number.isFinite(value)) return value;
@@ -870,7 +870,7 @@ function getClassDiffTopTenSubjects(students, headers) {
                 englishShown = true;
             }
         } else {
-            columns.push({ label: name, score: student => score(student, name) });
+            columns.push({ label: name, keys:[name], score: student => score(student, name) });
         }
     }
     return columns;
