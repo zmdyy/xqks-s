@@ -8326,117 +8326,88 @@ function updateTrendDisplay() {
     if (!hasGlobalChemistry && ps.subjectGrades && ps.subjectGrades.chemistry) {
         hasGlobalChemistry = ps.subjectGrades.chemistry.rows.some(function(r) { return r.slice(1).some(function(v) { return v !== '' && v !== null; }); });
     }
+    var subjectData = isGrade ? ps.subjectGrades : (isRank ? ps.subjects : ps.subjectScores);
+    var examLabels = ps.total.headers.slice(1);
+    var multiSubjectParts = {
+        english: [{ id:'english', name:'笔试' }, { id:'englishListening', name:'听说', color:'#91cc75' }],
+        bioGeo: [{ id:'biology', name:'生物' }, { id:'geography', name:'地理', color:'#fac858' }]
+    };
     TREND_SUBJECTS.forEach(function(subj) {
-        var chartKey = subj.id === 'bioGeo' ? 'bioGeoRankChart' : subj.id + 'RankChart';
-        var ci = trendEchartsInst[chartKey];
-        var cb = el('chartBox-' + subj.id);
-        if (!ci || !cb) return;
-        ci.clear();
-        if (subj.id === 'bioGeo') {
-            if (hasGlobalChemistry) { cb.style.display = 'none'; ci.clear(); return; }
-            var dsRank = ps.subjects, dsScore = ps.subjectScores, dsGrade = ps.subjectGrades || {};
-            var sds = isGrade ? dsGrade : (isRank ? dsRank : dsScore);
-            var db = findRowData(sds.biology, name);
-            var dg = findRowData(sds.geography, name);
-            var allLabels = new Set();
-            [db, dg, findRowData(dsRank.biology, name), findRowData(dsRank.geography, name), findRowData(dsScore.biology, name), findRowData(dsScore.geography, name), findRowData(dsGrade.biology, name), findRowData(dsGrade.geography, name)].forEach(function(d) { if (d && d.labels) d.labels.forEach(function(l) { allLabels.add(l); }); });
-            // User-edited order from dataset headers takes priority (no sort)
-            var orderedLabels = [];
-            var seenL = new Set();
-            [db, dg].forEach(function(d) {
-                if (d && d.labels) d.labels.forEach(function(l) {
-                    if (!seenL.has(l)) { seenL.add(l); orderedLabels.push(l); }
-                });
-            });
-            var labelFmt = function(p) { return formatTrendChartValue(p.value, mode); };
-            var series = [];
-            if (db && db.values.some(function(v) { return v !== null; })) series.push({ name: '生物', type: 'line', data: orderedLabels.map(function(l) { var i = db.labels.indexOf(l); return i >= 0 ? db.values[i] : null; }), lineStyle: { type: 'solid' }, symbol: psym, color: lc, label: { show: cfg.showLabels, position: 'top', fontSize: fs - 4, formatter: labelFmt } });
-            if (dg && dg.values.some(function(v) { return v !== null; })) series.push({ name: '地理', type: 'line', data: orderedLabels.map(function(l) { var i = dg.labels.indexOf(l); return i >= 0 ? dg.values[i] : null; }), lineStyle: { type: 'dashed' }, symbol: 'diamond', color: '#fac858', label: { show: cfg.showLabels, position: 'top', fontSize: fs - 4, formatter: labelFmt } });
-            // Add grade averages for bioGeo
-            if (showAvg && ps.examAverages && ps.examAverages.length) {
-                var bioAvgVals = ps.examAverages.map(function(a) { var v = a.subjects.biology; return v != null ? Math.round(v) : null; });
-                var geoAvgVals = ps.examAverages.map(function(a) { var v = a.subjects.geography; return v != null ? Math.round(v) : null; });
-                if (bioAvgVals.some(function(v) { return v != null; })) series.push({ name: '生物均分', type: 'line', data: orderedLabels.map(function(l) { var i = db ? db.labels.indexOf(l) : -1; return i >= 0 && i < bioAvgVals.length ? bioAvgVals[i] : null; }), lineStyle: { type: 'dashed' }, symbol: 'circle', symbolSize: 4, color: '#999', label: { show: false } });
-                if (geoAvgVals.some(function(v) { return v != null; })) series.push({ name: '地理均分', type: 'line', data: orderedLabels.map(function(l) { var i = dg ? dg.labels.indexOf(l) : -1; return i >= 0 && i < geoAvgVals.length ? geoAvgVals[i] : null; }), lineStyle: { type: 'dashed' }, symbol: 'circle', symbolSize: 4, color: '#aaa', label: { show: false } });
-            }
-            if (series.length) {
-                cb.style.display = 'flex';
-                ci.setOption({
-                    tooltip: { trigger: 'axis', textStyle: { fontSize: fs - 2 }, formatter: function(params) { var content = params[0].name + '<br/>'; params.forEach(function(item) { content += item.marker + ' ' + item.seriesName + ': ' + (item.value == null ? '暂无数据' : formatTrendChartValue(item.value, mode)) + '<br/>'; }); return content; } },
-                    legend: { show: true, top: '0%', right: '8%', orient: 'horizontal', textStyle: { fontSize: fs - 4 }, itemGap: 10 },
-                    grid: { left: '12%', right: '8%', top: showAvg ? '22%' : '18%', bottom: '28%' },
-                    xAxis: { type: 'category', data: orderedLabels, boundaryGap: true, axisTick: { alignWithLabel: true }, axisLabel: { rotate: 35, fontSize: fs - 4, interval: 0, overflow: 'break', width: 50 } },
-                    yAxis: getTrendYAxisOption(mode, fs),
-                    series: series.map(function(s) { s.lineStyle = Object.assign(s.lineStyle || {}, { width: s.name.indexOf('均分') >= 0 ? 1 : cfg.lineWidth }); s.symbolSize = s.name.indexOf('均分') >= 0 ? 4 : cfg.pointSize; return s; })
-                }, true);
-                ci.resize();
-            } else { cb.style.display = 'none'; ci.clear(); }
-        } else if (subj.id === 'english') {
-            // English: 笔试(english) + 听说(englishListening) dual-series, like bioGeo
-            var dsRankE = ps.subjects, dsScoreE = ps.subjectScores, dsGradeE = ps.subjectGrades || {};
-            var sdsE = isGrade ? dsGradeE : (isRank ? dsRankE : dsScoreE);
-            var de = findRowData(sdsE.english, name);
-            var dels = findRowData(sdsE.englishListening, name);
-            var allLabelsE = new Set();
-            [de, dels, findRowData(dsRankE.english, name), findRowData(dsRankE.englishListening, name), findRowData(dsScoreE.english, name), findRowData(dsScoreE.englishListening, name), findRowData(dsGradeE.english, name), findRowData(dsGradeE.englishListening, name)].forEach(function(d) { if (d && d.labels) d.labels.forEach(function(l) { allLabelsE.add(l); }); });
-            // User-edited order from dataset headers takes priority (no sort)
-            var orderedLabelsE = [];
-            var seenLE = new Set();
-            [de, dels].forEach(function(d) {
-                if (d && d.labels) d.labels.forEach(function(l) {
-                    if (!seenLE.has(l)) { seenLE.add(l); orderedLabelsE.push(l); }
-                });
-            });
-            var labelFmt2 = function(p) { return formatTrendChartValue(p.value, mode); };
-            var seriesE = [];
-            var hasListening = dels && dels.values.some(function(v) { return v !== null && v !== ''; });
-            if (de && de.values.some(function(v) { return v !== null; })) seriesE.push({ name: '笔试', type: 'line', data: orderedLabelsE.map(function(l) { var i = de.labels.indexOf(l); return i >= 0 ? de.values[i] : null; }), lineStyle: { type: 'solid' }, symbol: psym, color: lc, label: { show: cfg.showLabels, position: 'top', fontSize: fs - 4, formatter: labelFmt2 } });
-            if (dels && hasListening) seriesE.push({ name: '听说', type: 'line', data: orderedLabelsE.map(function(l) { var i = dels.labels.indexOf(l); return i >= 0 ? dels.values[i] : null; }), lineStyle: { type: 'dashed' }, symbol: 'diamond', color: '#91cc75', label: { show: cfg.showLabels, position: 'top', fontSize: fs - 4, formatter: labelFmt2 } });
-            // Add grade averages for English
-            if (showAvg && ps.examAverages && ps.examAverages.length) {
-                var enAvgVals = ps.examAverages.map(function(a) { var v = a.subjects.english; return v != null ? Math.round(v) : null; });
-                var lisAvgVals = ps.examAverages.map(function(a) { var v = a.subjects.englishListening; return v != null ? Math.round(v) : null; });
-                if (enAvgVals.some(function(v) { return v != null; })) seriesE.push({ name: '笔试均分', type: 'line', data: orderedLabelsE.map(function(l) { var i = de ? de.labels.indexOf(l) : -1; return i >= 0 && i < enAvgVals.length ? enAvgVals[i] : null; }), lineStyle: { type: 'dashed' }, symbol: 'circle', symbolSize: 4, color: '#999', label: { show: false } });
-                if (lisAvgVals.some(function(v) { return v != null; })) seriesE.push({ name: '听说均分', type: 'line', data: orderedLabelsE.map(function(l) { var i = dels ? dels.labels.indexOf(l) : -1; return i >= 0 && i < lisAvgVals.length ? lisAvgVals[i] : null; }), lineStyle: { type: 'dashed' }, symbol: 'circle', symbolSize: 4, color: '#aaa', label: { show: false } });
-            }
-            if (seriesE.length) {
-                var hasAvgOverlay = showAvg && ps.examAverages && ps.examAverages.length;
-                cb.style.display = 'flex';
-                ci.setOption({
-                    tooltip: { trigger: 'axis', textStyle: { fontSize: fs - 2 }, formatter: function(params) { var content = params[0].name + '<br/>'; params.forEach(function(item) { content += item.marker + ' ' + item.seriesName + ': ' + (item.value == null ? '暂无数据' : formatTrendChartValue(item.value, mode)) + '<br/>'; }); return content; } },
-                    legend: { show: seriesE.length > 1, top: '0%', right: '8%', orient: 'horizontal', textStyle: { fontSize: fs - 4 }, itemGap: 10 },
-                    grid: { left: '12%', right: '8%', top: hasAvgOverlay ? '22%' : (seriesE.length > 1 ? '18%' : '16%'), bottom: '28%' },
-                    xAxis: { type: 'category', data: orderedLabelsE, boundaryGap: true, axisTick: { alignWithLabel: true }, axisLabel: { rotate: 35, fontSize: fs - 4, interval: 0, overflow: 'break', width: 50 } },
-                    yAxis: getTrendYAxisOption(mode, fs),
-                    series: seriesE.map(function(s) { s.lineStyle = Object.assign(s.lineStyle || {}, { width: s.name.indexOf('均分') >= 0 ? 1 : cfg.lineWidth }); s.symbolSize = s.name.indexOf('均分') >= 0 ? 4 : cfg.pointSize; return s; })
-                }, true);
-                ci.resize();
-            } else { cb.style.display = 'none'; ci.clear(); }
-        } else {
-            var sds2 = isGrade ? (ps.subjectGrades || {}) : (isRank ? ps.subjects : ps.subjectScores);
-            var dataset = sds2[subj.id];
-            var data = findRowData(dataset, name);
-            if (data && data.values.length > 0 && data.values.some(function(v) { return v !== null; })) {
-                var subjSeries = [{ type: 'line', data: data.values, symbol: psym, symbolSize: cfg.pointSize, lineStyle: { width: cfg.lineWidth }, color: lc,
-                    label: { show: cfg.showLabels, position: 'top', fontSize: fs - 4, formatter: function(p) { return formatTrendChartValue(p.value, mode); } }
-                }];
-                if (showAvg && ps.examAverages && ps.examAverages.length) {
-                    var avgVals = ps.examAverages.map(function(a) { var v = a.subjects[subj.id]; return v != null ? Math.round(v) : null; });
-                    if (avgVals.some(function(v) { return v != null; })) {
-                        subjSeries.push({ type: 'line', name: '年级均分', data: avgVals, symbol: 'circle', symbolSize: 4, lineStyle: { width: 1, type: 'dashed' }, color: '#999', label: { show: false } });
-                    }
-                }
-                cb.style.display = 'flex';
-                ci.setOption({
-                    tooltip: { trigger: 'axis', textStyle: { fontSize: fs - 2 }, formatter: function(params) { var content = params[0].name + '<br/>'; params.forEach(function(item) { content += item.marker + ' ' + (item.seriesName || subj.name) + ': ' + (item.value == null ? '暂无数据' : formatTrendChartValue(item.value, mode)) + '<br/>'; }); return content; } },
-                    grid: { left: '12%', right: '8%', top: showAvg ? '22%' : '16%', bottom: '28%' },
-                    xAxis: { type: 'category', data: data.labels, boundaryGap: true, axisTick: { alignWithLabel: true }, axisLabel: { rotate: 35, fontSize: fs - 4, interval: 0, overflow: 'break', width: 50 } },
-                    yAxis: getTrendYAxisOption(mode, fs),
-                    series: subjSeries
-                }, true);
-                ci.resize();
-            } else { cb.style.display = 'none'; ci.clear(); }
+        var chart = trendEchartsInst[subj.id === 'bioGeo' ? 'bioGeoRankChart' : subj.id + 'RankChart'];
+        var box = el('chartBox-' + subj.id);
+        if (!chart || !box) return;
+        if (subj.id === 'bioGeo' && hasGlobalChemistry) {
+            box.style.display = 'none';
+            chart.clear();
+            return;
         }
+
+        var parts = multiSubjectParts[subj.id] || [subj];
+        var records = parts.map(function(part) {
+            var row = findRowData(subjectData?.[part.id], name);
+            var values = examLabels.map(function(_, i) {
+                var value = row?.values[i];
+                return Number.isFinite(value) ? value : null;
+            });
+            return { part:part, values:values };
+        }).filter(function(record) { return record.values.some(Number.isFinite); });
+        if (!records.length) {
+            box.style.display = 'none';
+            chart.clear();
+            return;
+        }
+
+        // Clip only the edges. Missing exams within the range stay on the axis.
+        var hasValueAt = function(i) { return records.some(function(record) { return record.values[i] !== null; }); };
+        var first = examLabels.findIndex(function(_, i) { return hasValueAt(i); });
+        var last = examLabels.length - 1;
+        while (!hasValueAt(last)) last--;
+        var labels = examLabels.slice(first, last + 1);
+        var series = records.map(function(record) {
+            var values = record.values.slice(first, last + 1);
+            var hasLine = values.some(function(value, i) { return value !== null && i > 0 && values[i - 1] !== null; });
+            return {
+                name: record.part.name, type: 'line', data: values, connectNulls: false,
+                symbol: record.part.color ? 'diamond' : (psym === 'none' && !hasLine ? 'circle' : psym),
+                symbolSize: cfg.pointSize, color: record.part.color || lc,
+                lineStyle: { width: cfg.lineWidth, type: record.part.color ? 'dashed' : 'solid' },
+                label: { show: cfg.showLabels, position: 'top', fontSize: fs - 4, formatter: function(p) { return formatTrendChartValue(p.value, mode); } }
+            };
+        });
+        if (showAvg && ps.examAverages?.length) {
+            records.forEach(function(record) {
+                var averages = labels.map(function(_, i) {
+                    var examIndex = first + i;
+                    var average = ps.examAverages[examIndex]?.subjects?.[record.part.id];
+                    return record.values[examIndex] !== null && Number.isFinite(average) ? Math.round(average) : null;
+                });
+                if (!averages.some(Number.isFinite)) return;
+                series.push({
+                    type: 'line', name: parts.length > 1 ? record.part.name + '均分' : '年级均分',
+                    data: averages, connectNulls: false, symbol: 'circle', symbolSize: 4, color: record.part.color ? '#aaa' : '#999',
+                    lineStyle: { width: 1, type: 'dashed' }, label: { show: false }
+                });
+            });
+        }
+        var showLegend = subj.id === 'bioGeo' || (parts.length > 1 && series.length > 1);
+        box.style.display = 'flex';
+        chart.setOption({
+            tooltip: {
+                trigger: 'axis', textStyle: { fontSize: fs - 2 },
+                formatter: function(params) {
+                    if (!params.length) return '';
+                    var content = params[0].name + '<br/>';
+                    params.forEach(function(item) { content += item.marker + ' ' + item.seriesName + ': ' + (item.value == null ? '暂无数据' : formatTrendChartValue(item.value, mode)) + '<br/>'; });
+                    return content;
+                }
+            },
+            legend: { show: showLegend, top: '0%', right: '8%', orient: 'horizontal', textStyle: { fontSize: fs - 4 }, itemGap: 10 },
+            grid: { left: '12%', right: '8%', top: series.length > records.length ? '22%' : (showLegend ? '18%' : '16%'), bottom: '28%' },
+            xAxis: { type: 'category', data: labels, boundaryGap: true, axisTick: { alignWithLabel: true }, axisLabel: { rotate: 35, fontSize: fs - 4, interval: 0, overflow: 'break', width: 50 } },
+            yAxis: getTrendYAxisOption(mode, fs),
+            series: series
+        }, true);
+        chart.resize();
     });
 
     el('trendPrevStudent').disabled = trendRowIdx <= 0;
