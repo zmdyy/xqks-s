@@ -28,7 +28,7 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         const page = await browser.newPage({viewport:{width:1440,height:1000}}), errors = [];
         page.on('pageerror', e => errors.push(e.message));
         let workerLoads=0; page.on('response', r => { if(r.url().endsWith('/spreadsheet-worker.js') && r.ok()) workerLoads++; });
-        await page.route('**/reports.js',async route=>{await new Promise(r=>setTimeout(r,120));await route.continue()});
+        await page.route(/\/reports\.js(?:\?|$)/,async route=>{await new Promise(r=>setTimeout(r,120));await route.continue()});
         await page.route(/\/class-comparison\.js(?:\?|$)/,async route=>{await new Promise(r=>setTimeout(r,40));await route.continue()});
         await page.route('**/seating.js',async route=>{await new Promise(r=>setTimeout(r,80));await route.continue()});
         await page.goto(url + '/'); await page.waitForFunction(()=>!document.getElementById('mainImportBtn').disabled);
@@ -93,6 +93,24 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.deepEqual(await page.locator('#tab-personal .controls label').allTextContents(), ['学生姓名：','排名范围：','排名类型：']);
         assert.deepEqual(await page.locator('#rankType option').allTextContents(), ['级名','校名','班名']);
         assert.equal(await page.locator('#personalClassFilter').count(), 0);
+        await page.click('[data-tab="tab-smart"]');
+        await page.fill('#smartNameSearch','赵六');
+        await page.locator('#smartNameSuggest .student-suggest-item[data-display-name="赵六"]').click();
+        await page.click('#smartIndividualBtn');
+        const weakColors = await page.locator('#studentReportWeakCompareChart').evaluate(el => {
+            const option = echarts.getInstanceByDom(el).getOption();
+            const zero = option.series[0].data.find(entry => entry.value === 0);
+            const zeroLabel = [...el.querySelectorAll('svg text')].find(node =>
+                node.textContent === '0%' && node.getAttribute('fill') === '#a23e1b');
+            return {
+                personal:option.series[0].color,
+                group:option.series[1].color,
+                zeros:zero?.label.backgroundColor,
+                rendered:!!zeroLabel,
+                values:option.series[1].data
+            };
+        });
+        assert.deepEqual(weakColors,{personal:'#a23e1b',group:'#176681',zeros:'#fff0e8',rendered:true,values:[50,50]});
         await page.click('[data-tab="tab-collective"]');
         await page.selectOption('#collectiveSubjectFilter','物理'); await page.waitForTimeout(160);
         assert.ok(await page.evaluate(()=>document.getElementById('collectiveHeatmapChart').querySelector('svg')),'heatmap must draw');

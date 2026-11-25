@@ -789,16 +789,39 @@ function renderStudentReadableCharts(subjects, weakItems, data, studentName) {
         var weakChart = AppCore.charts.init(weakEl, null, { renderer: 'svg' });
         var topWeak = weakItems.slice(0, 10);
         if (topWeak.length) {
+            var personalColor = '#a23e1b';
+            var groupColor = '#176681';
+            var questions = getReportCategoryAxis(topWeak.map(function(w) { return w.subject + '-' + w.item; }), 25);
+            questions.axisLabel = Object.assign(questions.axisLabel, { fontSize:12, color:REPORT_CHART_THEME.text });
             weakChart.setOption({
                 title: getReportChartTitle('薄弱小题对比：区分个体短板与共性难题'),
-                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(params) { return params.map(function(p) { return p.seriesName + '：' + p.value + '%'; }).join('<br>'); } },
-                legend: { top: 28, textStyle: { color: REPORT_CHART_THEME.axis, fontSize: 11 } },
-                grid: getReportChartGrid(52, 28, 66, 70),
-                xAxis: getReportCategoryAxis(topWeak.map(function(w) { return w.subject + '-' + w.item; }), 25),
-                yAxis: Object.assign(getReportValueAxis('得分率', 100), { axisLabel: { color: REPORT_CHART_THEME.axis, fontSize: 11, formatter: '{value}%' } }),
+                tooltip: Object.assign(getReportTooltip(), {
+                    valueFormatter: function(value) { return value == null ? '暂无数据' : value + '%'; }
+                }),
+                legend: { top: 28, textStyle: { color: REPORT_CHART_THEME.text, fontSize: 12, fontWeight:600 } },
+                grid: getReportChartGrid(52, 28, 70, 70),
+                xAxis: questions,
+                yAxis: Object.assign(getReportValueAxis('得分率', 100), {
+                    axisLabel: { color: REPORT_CHART_THEME.axis, fontSize: 11, formatter: '{value}%' }
+                }),
                 series: [
-                    { name: '个人', type: 'bar', data: topWeak.map(function(w){ return Math.round(w.rate * 100); }), color: REPORT_CHART_THEME.blue, barMaxWidth: 24, itemStyle: { borderRadius: [7,7,0,0] }, label: { show: true, position: 'top', color: REPORT_CHART_THEME.text, fontSize: 11, fontWeight: 700, formatter: '{c}%' } },
-                    { name: '全体', type: 'bar', data: topWeak.map(function(w){ return w.classRate == null ? null : Math.round(w.classRate * 100); }), color: REPORT_CHART_THEME.gray, barMaxWidth: 24, itemStyle: { borderRadius: [7,7,0,0] }, label: { show: true, position: 'top', color: REPORT_CHART_THEME.axis, fontSize: 11, formatter: function(p) { return p.value == null ? '-' : p.value + '%'; } } }
+                    {
+                        name: '个人', type: 'bar', color: personalColor, barMaxWidth: 24,
+                        data: topWeak.map(function(w) {
+                            var rate = Math.round(w.rate * 100);
+                            return rate === 0
+                                ? { value: 0, label: { backgroundColor:'#fff0e8', borderRadius:3, padding:[2,4] } }
+                                : rate;
+                        }),
+                        itemStyle: { borderRadius: [5,5,0,0] },
+                        label: { show:true, position:'top', color:personalColor, fontSize:12, fontWeight:700, formatter:'{c}%' }
+                    },
+                    {
+                        name: '全体', type: 'bar', color: groupColor, barMaxWidth: 24,
+                        data: topWeak.map(function(w){ return w.classRate == null ? null : Math.round(w.classRate * 100); }),
+                        itemStyle: { borderRadius: [5,5,0,0] },
+                        label: { show:true, position:'top', color:groupColor, fontSize:12, fontWeight:700, formatter:'{c}%' }
+                    }
                 ]
             });
         } else {
