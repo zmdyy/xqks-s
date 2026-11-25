@@ -898,10 +898,16 @@ function renderClassDiffTopTen() {
     const columns = getClassDiffTopTenSubjects(combinedStudentData, allSubjectHeaders)
         .map(column => ({ label: column.label, entries: rankClassDiffScores(students, column.score)
             .filter(entry => entry.rank <= 10) }));
-    const rowCount = Math.max(...columns.map(column => column.entries.length));
-    const showClass = !classSelect.value && classes.size > 0;
     const table = document.getElementById('classDiffTopTenTable');
+    const rowCount = renderClassTopTenTable(table, columns, !classSelect.value && classes.size > 0);
+    const totalNote = rowCount && !columns[0].entries.length ? ' · 暂无总分成绩' : '';
+    document.getElementById('classDiffTopTenSummary').textContent = `${students.length} 人${totalNote}`;
+    document.getElementById('classDiffTopTenExport').disabled = !rowCount;
+    table.parentElement.scrollTop = 0;
+}
 
+function renderClassTopTenTable(table, columns, showClass = false) {
+    const rowCount = Math.max(...columns.map(column => column.entries.length));
     table.tHead.innerHTML = `<tr>${columns.map(column => `<th scope="col">${escapeHtml(column.label)}</th>`).join('')}</tr>`;
     const rows = [];
     for (let index = 0; index < rowCount; index++) {
@@ -913,9 +919,12 @@ function renderClassDiffTopTen() {
             const classLabel = showClass
                 ? `<span class="class-top-ten-detail class-top-ten-class">${escapeHtml(normalizeClassName(entry.student.class))}</span>`
                 : '';
+            const gradeTop = entry.gradeRank > 0 && entry.gradeRank <= 10;
+            const nameClass = gradeTop ? 'class-top-ten-name class-top-ten-grade-top' : 'class-top-ten-name';
+            const rankTitle = gradeTop ? ` title="年级第 ${entry.gradeRank} 名"` : '';
             return `<td><div class="class-top-ten-entry">
                 <span class="class-top-ten-detail class-top-ten-rank">${entry.rank}</span>
-                <span class="class-top-ten-name">${escapeHtml(entry.student.name)}</span>
+                <span class="${nameClass}"${rankTitle}>${escapeHtml(entry.student.name)}</span>
                 ${tieLabel}${classLabel}
                 <span class="class-top-ten-detail class-top-ten-score">${entry.score}</span>
             </div></td>`;
@@ -923,10 +932,7 @@ function renderClassDiffTopTen() {
         rows.push(`<tr>${cells.join('')}</tr>`);
     }
     table.tBodies[0].innerHTML = rows.join('') || `<tr><td colspan="${columns.length}">当前范围暂无有效成绩</td></tr>`;
-    const totalNote = rowCount && !columns[0].entries.length ? ' · 暂无总分成绩' : '';
-    document.getElementById('classDiffTopTenSummary').textContent = `${students.length} 人${totalNote}`;
-    document.getElementById('classDiffTopTenExport').disabled = !rowCount;
-    table.parentElement.scrollTop = 0;
+    return rowCount;
 }
 
 document.getElementById('classDiffTopTenClass').addEventListener('change', renderClassDiffTopTen);

@@ -187,12 +187,13 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
                 class:'01班',
                 subjects:{
                     总分:{ score:500 - (i === 10 ? 9 : i), gradeRank:[3,10,10][i] ?? 20 + i },
-                    物理:{ score:100 - i, gradeRank:[4,1,9,2][i] ?? 20 + i }
+                    物理:{ score:100 - i, gradeRank:[4,1,9,2][i] ?? 20 + i },
+                    数学:{ score:100 - i }
                 }
             }));
-            const otherClass = { name:'榜单学生01', class:'02班', subjects:{ 总分:{ score:600, gradeRank:1 }, 物理:{ score:100, gradeRank:1 } } };
+            const otherClass = { name:'榜单学生01', class:'02班', subjects:{ 总分:{ score:600, gradeRank:1 }, 物理:{ score:100, gradeRank:1 }, 数学:{ score:110 } } };
             const current = {
-                id:'leaderboard-current', label:'榜单本次', allSubjectHeaders:[{ name:'总分' }, { name:'物理' }],
+                id:'leaderboard-current', label:'榜单本次', allSubjectHeaders:[{ name:'总分' }, { name:'物理' }, { name:'数学' }],
                 combinedStudentData:[...roster, otherClass]
             };
             const prior = AppCore.clone(current);
@@ -203,13 +204,28 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
                 student.subjects.总分.gradeRank = i === 3 ? 900 : 100 + i;
                 student.subjects.物理.gradeRank = i === 3 ? 102 : 50 + i;
             });
+            prior.combinedStudentData[3].subjects.数学.score = 30;
             const importedCurrent = AppCore.clone(current.combinedStudentData);
             delete importedCurrent[1].subjects.物理.gradeRank;
             importedCurrent[1].subjects.物理.schoolRank = 1;
             current.uploadedFilesData = { main:{ fileType:'main', studentData:importedCurrent } };
             prior.uploadedFilesData = { main:{ fileType:'main', studentData:AppCore.clone(prior.combinedStudentData) } };
-            const readBoard = key => Object.fromEntries([...document.querySelectorAll('[data-class-leaderboard="' + key + '"] tbody tr')]
+            const readProgress = () => Object.fromEntries([...document.querySelectorAll('[data-class-leaderboard="improved"] tbody tr')]
                 .map(row => [row.cells[0].textContent, [...row.querySelectorAll('.sr-class-leaderboard-entry')].map(entry => entry.textContent)]));
+            const readClassTable = () => {
+                const table = document.getElementById('classReportTopTenTable');
+                return Object.fromEntries([...table.tHead.rows[0].cells].map((header, index) => [header.textContent,
+                    [...table.tBodies[0].rows].map(row => row.cells[index]).filter(cell => cell.querySelector('.class-top-ten-name'))
+                        .map(cell => {
+                            const name = cell.querySelector('.class-top-ten-name');
+                            return {
+                                name:name.textContent,
+                                gradeRank:name.title,
+                                gold:name.classList.contains('class-top-ten-grade-top') && getComputedStyle(name).backgroundColor === 'rgb(255, 228, 160)',
+                                tie:cell.querySelector('.class-top-ten-tie')?.textContent || ''
+                            };
+                        })]));
+            };
             try {
                 DataPool.batches = [prior, current, ...saved.batches];
                 refreshSmartTab();
@@ -220,7 +236,15 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
                 const compareSelect = document.getElementById('smartClassCompareBatch');
                 compareSelect.value = prior.id;
                 document.getElementById('smartClassBtn').click();
-                const result = { class:readBoard('class'), grade:readBoard('grade'), improved:readBoard('improved') };
+                const result = {
+                    class:readClassTable(), improved:readProgress(),
+                    gradeTable:!!document.querySelector('[data-class-leaderboard="grade"]')
+                };
+                current.combinedStudentData = roster;
+                document.getElementById('smartClassBtn').click();
+                result.singleClassGold = readClassTable().数学.some(entry => entry.gold);
+                result.singleClassMessage = [...document.querySelectorAll('[data-class-leaderboard="improved"] tbody tr')]
+                    .find(row => row.cells[0].textContent === '数学').cells[1].textContent;
                 compareSelect.value = '';
                 document.getElementById('smartClassBtn').click();
                 result.noCompare = document.getElementById('comprehensiveReadableReportContent').textContent.includes('选择对照批次后显示进步榜');
@@ -231,15 +255,25 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
                 refreshSmartTab();
             }
         });
+        assert.deepEqual(Object.keys(classReport.class),['总分','物理','数学']);
         assert.equal(classReport.class.总分.length,11);
-        assert.deepEqual(classReport.class.总分.slice(-2),['10 榜单学生09491 分','10 榜单学生10491 分']);
+        assert.deepEqual(classReport.class.总分.slice(-2).map(entry => [entry.name,entry.tie]),
+            [['榜单学生09','并列第 10'],['榜单学生10','并列第 10']]);
         assert.equal(classReport.class.物理.length,10);
-        assert.deepEqual(classReport.grade.总分,['第 3 名 榜单学生00','第 10 名 榜单学生01','第 10 名 榜单学生02']);
-        assert.deepEqual(classReport.grade.物理,['第 2 名 榜单学生03','第 4 名 榜单学生00','第 9 名 榜单学生02']);
+        assert.equal(classReport.gradeTable,false);
+        assert.deepEqual(classReport.class.总分.filter(entry => entry.gold).map(entry => [entry.name,entry.gradeRank]),
+            [['榜单学生00','年级第 3 名'],['榜单学生01','年级第 10 名'],['榜单学生02','年级第 10 名']]);
+        assert.deepEqual(classReport.class.物理.filter(entry => entry.gold).map(entry => entry.name),
+            ['榜单学生00','榜单学生02','榜单学生03']);
+        assert.equal(classReport.class.数学.filter(entry => entry.gold).length,9);
+        assert.equal(classReport.class.数学[0].gradeRank,'年级第 2 名');
         assert.equal(classReport.improved.总分.length,10);
         assert.equal(classReport.improved.总分[0],'榜单学生03900 → 23↑877');
         assert.equal(classReport.improved.物理[0],'榜单学生03102 → 2↑100');
         assert.ok(classReport.improved.物理.every(entry => !entry.includes('榜单学生01')));
+        assert.deepEqual(classReport.improved.数学,['榜单学生0313 → 5↑8']);
+        assert.equal(classReport.singleClassGold,false);
+        assert.equal(classReport.singleClassMessage,'本次缺少年级排名数据');
         assert.ok(classReport.noCompare);
         await page.click('[data-tab="tab-collective"]');
         await page.selectOption('#collectiveSubjectFilter','物理'); await page.waitForTimeout(160);
