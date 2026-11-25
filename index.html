@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>学情可视化展板</title>
-    <link rel="preload" href="reports.js?v=class-report-decline-grid" as="script">
+    <link rel="preload" href="reports.js?v=comprehensive-diagnosis-parity" as="script">
     <link rel="preload" href="class-comparison.js?v=class-report-ranks" as="script">
     <link rel="preload" href="seating.js" as="script">
     <link rel="preload" href="seating-data.js" as="script">
@@ -724,6 +724,9 @@
                     <div class="control-group"><label>班级：</label>
                         <select id="comprehensiveClassFilter" class="filter-bar-select" style="width:70px;"></select>
                     </div>
+                    <div class="control-group"><label for="comprehensiveClassCompareBatch">全班对照：</label>
+                        <select id="comprehensiveClassCompareBatch" class="filter-bar-select" style="max-width:120px;"></select>
+                    </div>
                     <div style="display:flex;gap:4px;flex-wrap:nowrap;">
                          <button class="filter-btn comp-btn-warning" id="comprehensiveBatchBtn">全班</button>
                          <button class="filter-btn comp-btn-purple" id="comprehensiveGroupingBtn">分层</button>
@@ -858,7 +861,7 @@
             <!-- 综合诊断输出（单人/群体/单科/座位） -->
             <div id="comprehensiveOutput" style="display:none;">
                 <div class="ai-analysis-container">
-                    <h3>📝 综合诊断报告（Markdown已生成，点击复制后粘贴至DeepSeek分析）</h3>
+                    <h3>📝 综合诊断报告（Markdown）</h3>
                     <pre id="comprehensiveDataContent"></pre>
                       <div class="comp-output-actions">
                            <button class="comp-copy-btn" id="comprehensiveCopyBtn">复制报告</button>
@@ -873,6 +876,7 @@
                 <div class="statistics-section">
                     <h3>📈 进退步量化统计报告</h3>
                     <div class="scroll-container" style="max-height:500px;" id="progressTableContainer"></div>
+                    <button type="button" class="filter-btn" id="progressMarkdownBtn">查看进退步 Markdown</button>
                 </div>
             </div>
 
@@ -883,6 +887,7 @@
                     <div class="scroll-container" style="max-height:400px;" id="criticalTableContainer"></div>
                     <div style="margin-top:8px;">
                         <button class="upload-btn" id="criticalCopyBtn">📋 复制预警名单</button>
+                    <button type="button" class="filter-btn" id="criticalMarkdownBtn">查看预警 Markdown</button>
                         <span id="criticalCopyStatus" style="color:#27ae60;font-weight:bold;margin-left:8px;"></span>
                     </div>
                 </div>
@@ -890,6 +895,7 @@
 
             <!-- 学科关联散点图输出 -->
             <div id="corrOutput" style="display:none;">
+                    <button type="button" class="filter-btn" id="corrMarkdownBtn">查看关联诊断 Markdown</button>
                 <div id="corrInfoBar" style="font-size:12px;color:#555;margin-bottom:4px;padding:4px 8px;background:#faf5ff;border-radius:4px;"></div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;">
                     <div style="flex:2;min-width:350px;height:420px;" id="corrScatterChart"></div>
@@ -1131,7 +1137,7 @@
     </div>
 </div>
 
-<script src="reports.js?v=class-report-decline-grid"></script>
+<script src="reports.js?v=comprehensive-diagnosis-parity"></script>
 <script src="class-comparison.js?v=class-report-ranks"></script>
 <script src="seating-data.js"></script>
 <script src="seating-engine.js"></script>
@@ -1611,15 +1617,16 @@ const CLASS_REPORT_PROMPT = [
     '',
     '# 班级学情报告要求',
     '- 必须输出全班画像：分层结构、优势学科、薄弱学科、尖子生/临界生/后进生结构。',
-    '- 必须列出所有科目的流转生，按科目分别说明升级、降级或显著波动学生姓名。',
-    '- 必须列出按年级名次进步前10名和退步前10名；若数据不足10人，列出全部可判定学生并说明不足原因。',
+    '- 概括各科及总分的班级均分、班级均分名次与本班前十，并标明输入中已确认进入年级前十的学生。',
+    '- 有对照批次时，按总分与科目分别报告等级流转和年级名次进步、退步前十。直接使用数据中的顺序、有效对照人数和缺失说明。',
+    '- 区分班内名次、年级名次与班级均分名次。等级流转与按排名划分的分层变化分别解读。',
     '- 共性薄弱题不做具体知识点归因，只区分为基础薄弱失分、中等难度掌握不足、尖子生拔高不足。',
     '- 所有干预建议必须落到学生名单、学科、时间周期和可执行动作。',
     '',
     '# 输出结构',
     '## 一、班级总体画像',
-    '## 二、全科流转生名单',
-    '## 三、年级名次进退步前10名',
+    '## 二、各科和总分前十、班级均分与等级流转',
+    '## 三、各科和总分年级名次进退步前十',
     '## 四、共性薄弱类型诊断',
     '## 五、分层干预与跟踪清单',
     '',
@@ -1701,7 +1708,16 @@ const SEATING_OPTIMIZATION_PROMPT = [
 ].join('\n');
 
 function getComprehensiveAiPrompt(mode) {
-    if (mode === 'batch' || mode === 'grouping') return CLASS_REPORT_PROMPT;
+    if (mode === 'batch') return CLASS_REPORT_PROMPT;
+    if (mode === 'grouping') return REPORT_COMMON_HARD_RULES + '\n\n' + GROUPING_AI_PROMPT;
+    if (mode === 'progress' || mode === 'critical' || mode === 'correlation') {
+        const focus = {
+            progress:'分别比较分差和名次变化，说明批次、范围和可比人数，结合两项指标列出需跟进的学生。',
+            critical:'写明各次考试的预警线和临界带，按已有预警类别列出学生和分数差距，缺考或缺线不补值。',
+            correlation:'交代两科、有效人数和均衡阈值，列出偏弱科目及重点学生。相关系数只描述名次关系，不推断因果。'
+        };
+        return REPORT_COMMON_HARD_RULES + '\n\n# 诊断要求\n' + focus[mode] + '\n\n# 输入数据';
+    }
     if (mode === 'seating') return SEATING_OPTIMIZATION_PROMPT;
     if (mode === 'subj') return SUBJECT_TEACHING_PROMPT;
     if (mode === 'error') return ERROR_ATTRIBUTION_PROMPT;
@@ -9121,7 +9137,7 @@ function generateComprehensiveReport(studentName, thresholdVal) {
         lines.push('');
         lines.push('| 指标 | 值 |');
         lines.push('|------|-----|');
-        lines.push('| 总分 | ' + (ts.score||'N/A') + ' |');
+        lines.push('| 总分 | ' + (hasDataValue(ts.score) ? ts.score : 'N/A') + ' |');
         if (ts.schoolRank) lines.push('| 校名 | ' + ts.schoolRank + ' |');
         if (ts.gradeRank) lines.push('| 级名 | ' + ts.gradeRank + ' |');
         if (ts.classRank) lines.push('| 班名 | ' + ts.classRank + ' |');
@@ -9138,7 +9154,7 @@ function generateComprehensiveReport(studentName, thresholdVal) {
         var sd = currentData.subjects[sn];
         var fm = fullMarks[sn] || '-';
         var rate = (typeof sd.score === 'number' && typeof fm === 'number' && fm > 0) ? Math.round(sd.score/fm*100) + '%' : '-';
-        lines.push('| ' + sn + ' | ' + (sd.score||'N/A') + ' | ' + fm + ' | ' + rate + ' | ' + (sd.grade||'N/A') + ' | ' + (sd.gradeRank||'N/A') + ' |');
+        lines.push('| ' + sn + ' | ' + (hasDataValue(sd.score) ? sd.score : 'N/A') + ' | ' + fm + ' | ' + rate + ' | ' + (sd.grade||'N/A') + ' | ' + (sd.gradeRank||'N/A') + ' |');
     });
     lines.push('');
     
@@ -9150,20 +9166,22 @@ function generateComprehensiveReport(studentName, thresholdVal) {
             if (!hasWeak) {
                 lines.push('### 1.3 薄弱小题清单（得分率 < ' + (currentData.weakScoreRateThreshold||0.6) + '）');
                 lines.push('');
-                lines.push('> 💡 每道弱项的完整题干原文已集中放置在下方 **1.4 节**。请在读完 1.4 后回到本节逐题标注知识点。当前"对应知识点"列统一标记为"见1.4节"，并非题目缺失。');
+                lines.push('> 全体得分率来自当前批次同一道小题的有效计分记录。具体知识点须结合可定位的原题和作答核对。');
                 lines.push('');
             }
             hasWeak = true;
             lines.push('#### ' + sn);
             lines.push('');
-            lines.push('| 题号/模块 | 对应知识点 | 得分 / 满分 | 得分率 | 学生答案 → 正确答案 | 失分诊断 |');
-            lines.push('| --- | --- | ---: | ---: | --- | --- |');
-            sd.weakSubScores.items.forEach(function(item) {
-                var rate = (item.rate*100).toFixed(0) + '%';
-                var ans = item.studentAnswer || '（无数据）';
-                var correct = item.correctAnswer || '（无数据）';
-                lines.push('| ' + item.item + ' | ⚡ 见下方「1.4 低分题题干摘录」 | ' + item.score + ' / ' + item.maxScore + ' | ' + rate + ' | ' + ans + ' → ' + correct + ' | 待AI根据1.4节原文分析 |');
-            });
+            lines.push(diagnosisMarkdownTable(['题号/模块','得分 / 满分','个人得分率','全体得分率','个人 − 全体','失分类型','学生答案 → 正确答案'],
+                sd.weakSubScores.items.map(function(item) {
+                    const average = getClassItemAverageRate(sn, item.item);
+                    const diff = average == null ? null : Math.round((item.rate - average) * 100);
+                    return [item.item,item.score + ' / ' + item.maxScore,Math.round(item.rate * 100) + '%',
+                        average == null ? '—' : Math.round(average * 100) + '%',
+                        diff == null ? '—' : (diff > 0 ? '+' : '') + diff + ' 个百分点',
+                        classifyWeakItemNature(item.rate, average).label,
+                        (item.studentAnswer || '（无数据）') + ' → ' + (item.correctAnswer || '（无数据）')];
+                })));
             lines.push('');
         }
     });
@@ -9761,6 +9779,18 @@ function refreshComprehensiveTab() {
         return clsList;
     };
     populateClassSel('comprehensiveClassFilter');
+    const classReference = document.getElementById('comprehensiveClassCompareBatch');
+    const previousValue = classReference.value;
+    classReference.replaceChildren(new Option('仅本次（无对照）', ''));
+    DataPool.batches.filter(batch => batch.id !== DataPool.currentBatchId).forEach(batch => {
+        classReference.appendChild(new Option(batch.label, batch.id));
+    });
+    if (previousValue && Array.from(classReference.options).some(option => option.value === previousValue)) {
+        classReference.value = previousValue;
+    } else if (classReference.dataset.initialized !== 'true') {
+        classReference.value = getPreviousBatchForReport()?.id || '';
+    }
+    if (DataPool.batches.length > 1) classReference.dataset.initialized = 'true';
     // Populate chip-style class selector (单科分析)
     var chipContainer = document.getElementById('comprehensiveSubjClassChips');
     if (chipContainer) {
@@ -10020,119 +10050,27 @@ function getPreviousBatchForReport() {
     return null;
 }
 
-function generateClassTransitionSummary(className, students, subjNames, anchorSN, totalPop) {
-    var prevBatch = getPreviousBatchForReport();
-    var lines = [];
-    lines.push('## 跨批次流转与年级名次变化');
-    lines.push('');
-    if (!prevBatch || !prevBatch.combinedStudentData || !prevBatch.combinedStudentData.length) {
-        lines.push('无可用对比批次，无法生成全科流转生和年级名次进退前10名。');
-        lines.push('');
-        return lines;
-    }
-    var prevData = prevBatch.combinedStudentData || [];
-    var curBatch = DataPool.getCurrentBatch ? DataPool.getCurrentBatch() : null;
-    lines.push('对比批次：' + (prevBatch.label || '上一批次') + ' → ' + ((curBatch && curBatch.label) || '当前批次'));
-    lines.push('');
-
-    function studentKey(s) {
-        return String(s.name || '').trim() + '||' + normalizeClassName(s.class || '');
-    }
-    function getRank(s, sn) {
-        var sd = s && s.subjects ? s.subjects[sn] : null;
-        if (!sd) return null;
-        var r = parseInt(sd.gradeRank, 10) || parseInt(sd.schoolRank, 10) || null;
-        return r && r > 0 ? r : null;
-    }
-    var prevMap = {};
-    prevData.forEach(function(s) { prevMap[studentKey(s)] = s; });
-
-    lines.push('### 全科流转生');
-    lines.push('');
-    lines.push('| 科目 | 升级学生 | 降级学生 |');
-    lines.push('|------|----------|----------|');
-    subjNames.forEach(function(sn) {
-        var up = [];
-        var down = [];
-        students.forEach(function(s) {
-            var ps = prevMap[studentKey(s)];
-            if (!ps) return;
-            var prevRank = getRank(ps, sn);
-            var curRank = getRank(s, sn);
-            if (!prevRank || !curRank) return;
-            var prevTier = getReportTierByRank(prevRank, totalPop);
-            var curTier = getReportTierByRank(curRank, totalPop);
-            var order = { '后进': 0, '临界': 1, '中上': 2, '领先': 3 };
-            if (order[curTier] > order[prevTier]) up.push(getStudentDisplayName(s) + '(' + prevTier + '→' + curTier + ')');
-            else if (order[curTier] < order[prevTier]) down.push(getStudentDisplayName(s) + '(' + prevTier + '→' + curTier + ')');
-        });
-        lines.push('| ' + sn + ' | ' + (up.join('、') || '无') + ' | ' + (down.join('、') || '无') + ' |');
-    });
-    lines.push('');
-
-    var rankChanges = [];
-    students.forEach(function(s) {
-        var ps = prevMap[studentKey(s)];
-        if (!ps || !anchorSN) return;
-        var prevRank = getRank(ps, anchorSN);
-        var curRank = getRank(s, anchorSN);
-        if (!prevRank || !curRank) return;
-        rankChanges.push({
-            name: getStudentDisplayName(s),
-            prevRank: prevRank,
-            curRank: curRank,
-            change: prevRank - curRank
-        });
-    });
-    var improvers = rankChanges.filter(function(r) { return r.change > 0; }).sort(function(a, b) { return b.change - a.change; }).slice(0, 10);
-    var decliners = rankChanges.filter(function(r) { return r.change < 0; }).sort(function(a, b) { return a.change - b.change; }).slice(0, 10);
-
-    lines.push('### 年级名次进步前10名');
-    lines.push('');
-    lines.push('| 排名 | 姓名 | 上次年级名次 | 本次年级名次 | 进步名次 |');
-    lines.push('|------|------|--------------|--------------|----------|');
-    if (improvers.length) {
-        improvers.forEach(function(r, idx) {
-            lines.push('| ' + (idx + 1) + ' | ' + r.name + ' | ' + r.prevRank + ' | ' + r.curRank + ' | +' + r.change + ' |');
-        });
-    } else {
-        lines.push('| - | 无 | - | - | - |');
-    }
-    lines.push('');
-
-    lines.push('### 年级名次退步前10名');
-    lines.push('');
-    lines.push('| 排名 | 姓名 | 上次年级名次 | 本次年级名次 | 退步名次 |');
-    lines.push('|------|------|--------------|--------------|----------|');
-    if (decliners.length) {
-        decliners.forEach(function(r, idx) {
-            lines.push('| ' + (idx + 1) + ' | ' + r.name + ' | ' + r.prevRank + ' | ' + r.curRank + ' | ' + Math.abs(r.change) + ' |');
-        });
-    } else {
-        lines.push('| - | 无 | - | - | - |');
-    }
-    lines.push('');
-    return lines;
-}
-
-function generateBatchComprehensiveReports(className, threshold) {
+function generateBatchComprehensiveReports(className, threshold, compareBatchId) {
+    const compareBatch = getClassReportCompareBatch(compareBatchId);
     var students = combinedStudentData.filter(function(s) {
-        return String(s.class) === className;
+        return AppCore.classKey(s.class) === AppCore.classKey(className);
     });
     if (!students.length) return null;
 
-    // Collect all subject names from all students (exclude 总分), plus per-student weak items
+    const totalColumn = getClassDiffTopTenSubjects(combinedStudentData, allSubjectHeaders, true)[0];
+    const totalSubject = totalColumn.keys[0];
+    const totalRanks = getClassReportGradeRanks(combinedStudentData, totalColumn, getClassReportImportedGradeRanks(DataPool.getCurrentBatch()));
+    // Collect subjects and each student's weak items.
     var allSubjNames = new Set();
     var compactData = [];
     students.forEach(function(s) {
-        var ts = s.subjects[getTotalSubjectName(allSubjectHeaders, combinedStudentData)];
-        var totalRank = ts ? (parseInt(ts.gradeRank,10) || parseInt(ts.schoolRank,10) || '?') : '?';
+        var ts = s.subjects[totalSubject];
+        var totalRank = totalRanks.get(AppCore.studentKey(s)) ?? '—';
         var totalScore = (ts && hasDataValue(ts.score)) ? ts.score : '?';
         var subjRates = {};
         var weakItems = [];
         Object.keys(s.subjects).forEach(function(sn) {
-            var anchorSN2 = getTotalSubjectName(allSubjectHeaders, combinedStudentData);
-            if (sn === anchorSN2) return;
+            if (sn === totalSubject) return;
             allSubjNames.add(sn);
             var sd = s.subjects[sn];
             var fm = null;
@@ -10144,7 +10082,7 @@ function generateBatchComprehensiveReports(className, threshold) {
             if (sd && sd.subScores) {
                 Object.keys(sd.subScores).forEach(function(itemName) {
                     var item = sd.subScores[itemName];
-                    if (!item || typeof item !== 'object') return;
+                    if (!item || typeof item !== 'object' || item.summaryOf) return;
                     var snum = parseFloat(item.score), mnum = parseFloat(item.maxScore);
                     if (isNaN(snum) || isNaN(mnum) || mnum <= 0) return;
                     if (snum/mnum < threshold) {
@@ -10204,19 +10142,19 @@ function generateBatchComprehensiveReports(className, threshold) {
     lines.push('| 统计项 | 数值 |');
     lines.push('|--------|------|');
     lines.push('| 班级 | ' + className + ' |');
+    lines.push('| 本次批次 | ' + (DataPool.getCurrentBatch()?.label || '当前数据') + ' |');
+    lines.push('| 对照批次 | ' + (compareBatch?.label || '未选择') + ' |');
     lines.push('| 学生总数 | ' + students.length + ' |');
     lines.push('| 薄弱阈值 | ' + threshold + ' |');
     lines.push('| 弱项题目数 | ' + Object.keys(dirMap).length + ' |');
     lines.push('');
 
-    generateClassTransitionSummary(className, students, subjNames, getTotalSubjectName(allSubjectHeaders, combinedStudentData), combinedStudentData.length || students.length).forEach(function(line) {
-        lines.push(line);
-    });
+    lines.push(...buildClassDiagnosisSections(className, students, compareBatch));
 
     // Compact student summary table
     lines.push('## 学生紧凑摘要');
     lines.push('');
-    var headerCells = ['姓名', '总分(排名)'];
+    var headerCells = ['姓名', '总分（年级名次）'];
     subjNames.forEach(function(sn) { headerCells.push(sn + '(得分率)'); });
     headerCells.push('弱项目录索引');
     lines.push('| ' + headerCells.join(' | ') + ' |');
@@ -10237,7 +10175,7 @@ function generateBatchComprehensiveReports(className, threshold) {
     lines.push('## 📋 全卷低分题集中目录');
     lines.push('');
     if (Object.keys(dirMap).length === 0) {
-        lines.push('全班无薄弱题目（所有题目得分率均 ≥ ' + threshold + '）');
+        lines.push('当前范围未发现低于阈值的有效小题计分记录');
     } else {
         Object.keys(dirMap).forEach(function(key) {
             var di = dirMap[key];
@@ -10506,7 +10444,6 @@ function generateTieredGroupingReport(className, threshold) {
 //  学科关联分析（偏科散点图）
 // ============================================================
 async function renderSubjectCorrelation() {
-    var className = document.getElementById('corrClassFilter').value;
     var xSubj = document.getElementById('corrXSubject').value;
     var ySubj = document.getElementById('corrYSubject').value;
     var balanceThreshold = parseInt(document.getElementById('corrBalanceThreshold').value) || 20;
@@ -10514,38 +10451,25 @@ async function renderSubjectCorrelation() {
     if (!xSubj || !ySubj) { await showAlert('请选择横轴和纵轴科目'); return; }
     if (xSubj === ySubj) { await showAlert('横轴和纵轴科目不能相同'); return; }
 
-    var students = className === '__all__' ? combinedStudentData : combinedStudentData.filter(function(s) { return String(s.class) === className; });
-    if (!students.length) { await showAlert('所选范围没有学生数据'); return; }
-
-    var dataPoints = [];
-    students.forEach(function(s) {
-        var xSd = s.subjects[xSubj], ySd = s.subjects[ySubj];
-        if (!xSd || !ySd) return;
-        var xRank = parseInt(xSd.gradeRank, 10), yRank = parseInt(ySd.gradeRank, 10);
-        if (isNaN(xRank) || isNaN(yRank) || xRank <= 0 || yRank <= 0) return;
-        dataPoints.push({ name: getStudentDisplayName(s), rawName: s.name, x: xRank, y: yRank, diff: yRank - xRank });
-    });
-    if (!dataPoints.length) { await showAlert('所选班级没有学生同时具有两科有效年级排名数据'); return; }
-
+    const data = buildCorrelationReportData();
+    if (!data) { await showAlert('所选范围内没有同时具备两科有效年级名次的学生'); return; }
+    const dataPoints = data.points;
+    const n = dataPoints.length;
+    const rText = data.correlationDefined ? data.r.toFixed(3) : '无法计算';
+    const maxRank = dataPoints.reduce((max, point) => Math.max(max, point.x, point.y), 0);
+    const maxVal = Math.ceil((maxRank + 20) / 10) * 10;
+    document.getElementById('corrMarkdownBtn').onclick = () => showComprehensiveMarkdown(formatCorrelationDiagnosis(data), 'correlation');
     document.getElementById('corrOutput').style.display = 'block';
+    for (const id of ['comprehensiveOutput','progressOutput','criticalOutput','comprehensivePlaceholder']) {
+        document.getElementById(id).style.display = 'none';
+    }
     hideStudentReadableReport();
     hideComprehensiveReadableReport();
-
-    // Max axis range
-    var maxRank = 0;
-    dataPoints.forEach(function(p) { maxRank = Math.max(maxRank, p.x, p.y); });
-    var maxVal = Math.ceil((maxRank + 20) / 10) * 10;
-
-    // Pearson correlation coefficient
-    var n = dataPoints.length, sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
-    dataPoints.forEach(function(p) { sumX += p.x; sumY += p.y; sumXY += p.x * p.y; sumX2 += p.x * p.x; sumY2 += p.y * p.y; });
-    var denom = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-    var r = denom > 0 ? (n * sumXY - sumX * sumY) / denom : 0;
-    var rText = isNaN(r) ? 'N/A' : r.toFixed(3);
-    var meanX = n ? sumX / n : 0;
-    var meanY = n ? sumY / n : 0;
-    var corrDesc = '';
-    if (!isNaN(r)) {
+    var meanX = dataPoints.reduce((sum, point) => sum + point.x, 0) / n;
+    var meanY = dataPoints.reduce((sum, point) => sum + point.y, 0) / n;
+    var r = data.r;
+    var corrDesc = data.correlationDefined ? '无明显相关' : '样本或排名差异不足';
+    if (data.correlationDefined && r !== 0) {
         var absR = Math.abs(r);
         corrDesc = (absR >= 0.8 ? '强' : absR >= 0.5 ? '中等' : absR >= 0.3 ? '弱' : '极弱') + (r > 0 ? '正相关' : '负相关');
     }
@@ -10687,12 +10611,7 @@ document.getElementById('comprehensiveGenerateBtn').addEventListener('click', as
         document.getElementById('comprehensivePlaceholder').style.display = 'block';
         return;
     }
-    document.getElementById('comprehensivePlaceholder').style.display = 'none';
-    document.getElementById('comprehensiveOutput').style.display = 'block';
-    hideStudentReadableReport();
-    hideComprehensiveReadableReport();
-    document.getElementById('comprehensiveDataContent').textContent = report;
-    document.getElementById('comprehensiveDataContent').dataset.mode = 'single';
+    showComprehensiveMarkdown(report, 'single');
 });
 
 
@@ -10716,14 +10635,10 @@ document.getElementById('comprehensiveBatchBtn').addEventListener('click', async
     var threshold = parseFloat(document.getElementById('comprehensiveThreshold').value) || 0.6;
     var students = combinedStudentData.filter(function(s) { return String(s.class) === className; });
     if (!students.length) { await showAlert('该班级没有学生数据'); return; }
-    var report = generateBatchComprehensiveReports(className, threshold);
+    const compareBatchId = document.getElementById('comprehensiveClassCompareBatch').value;
+    var report = generateBatchComprehensiveReports(className, threshold, compareBatchId);
     if (!report) { await showAlert('生成失败，请检查数据'); return; }
-    document.getElementById('comprehensivePlaceholder').style.display = 'none';
-    document.getElementById('comprehensiveOutput').style.display = 'block';
-    hideStudentReadableReport();
-    hideComprehensiveReadableReport();
-    document.getElementById('comprehensiveDataContent').textContent = report;
-    document.getElementById('comprehensiveDataContent').dataset.mode = 'batch';
+    showComprehensiveMarkdown(report, 'batch');
 });
 
 // Generate tiered teaching groups (compact data, no individual reports)
@@ -10734,12 +10649,7 @@ document.getElementById('comprehensiveGroupingBtn').addEventListener('click', as
     if (!students.length) { await showAlert('该班级没有学生数据'); return; }
     var report = generateTieredGroupingReport(className, threshold);
     if (!report) { await showAlert('生成失败，请检查数据'); return; }
-    document.getElementById('comprehensivePlaceholder').style.display = 'none';
-    document.getElementById('comprehensiveOutput').style.display = 'block';
-    hideStudentReadableReport();
-    hideComprehensiveReadableReport();
-    document.getElementById('comprehensiveDataContent').textContent = report;
-    document.getElementById('comprehensiveDataContent').dataset.mode = 'grouping';
+    showComprehensiveMarkdown(report, 'grouping');
 });
 
 // Seating analysis
@@ -10802,6 +10712,13 @@ function generateSeatingReport(className) {
     data.students.forEach(function(s){lines.push('| '+s.name+' | '+(Number.isFinite(s.percentile)?s.percentile.toFixed(2):'缺失')+' | '+s.tier+' | '+s.sampleCount+' |');});
     lines.push('','## '+(data.actualPlacement?'当前排位':'位置示例'),'','| 排 | 列1 | 列2 | 列3 | 列4 | 列5 | 列6 | 列7 | 列8 |','| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
     for(var r=0;r<data.rows;r++)lines.push('| '+(r+1)+' | '+Array.from({length:8},function(_,c){return data.seatMap[r*8+c]?.absent?'—':data.seatMap[r*8+c]?.blocked?'禁用':data.seatMap[r*8+c]?.name || '空位';}).join(' | ')+' |');
+    const placed = new Set(data.seatMap.map(seat => seat?.name).filter(Boolean));
+    const waiting = data.students.filter(student => !placed.has(student.name)).map(student => student.name);
+    lines.push('', '待分配学生：' + (waiting.join('、') || '无'), '', '## 学生分层分布', '',
+        diagnosisMarkdownTable(['层次','人数'], Object.entries(data.tierCounts)));
+    if (Object.keys(data.subjectCounts).length) {
+        lines.push('', '## 帮扶学科统计', '', diagnosisMarkdownTable(['科目','帮扶次数'], Object.entries(data.subjectCounts)));
+    }
     lines.push('','## 当前同桌帮助方向');data.helpLinks.forEach(function(l){lines.push('- '+l.a+' / '+l.b+'：'+l.subjects.join('；'));});
     if(data.metrics)lines.push('','双向互补 '+data.metrics.dual+' 对；单向帮助 '+data.metrics.oneWay+' 对；无互补高＋高 '+data.metrics.highCrowding+' 对、低＋低 '+data.metrics.lowCrowding+' 对、混搭 '+data.metrics.mixed+' 对；左右高分强化 '+data.metrics.horizontal+' 对（近邻 '+data.metrics.horizontalClose+' 对），上下强化 '+data.metrics.vertical+' 对（近邻 '+data.metrics.verticalClose+' 对）；本组高分覆盖 '+data.metrics.own+'/'+data.metrics.activeGroups+' 组；相邻补充 '+data.metrics.adjacent+' 组；适中互补 '+data.metrics.moderate+' 对；科目均衡 '+data.metrics.balance+'。');
     lines.push('','数据仅用于当前成绩规则，不宣称已达到所有目标的理论最优。');return lines.join('\n');
@@ -10811,15 +10728,16 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
     if (tierMode == null) tierMode = 'rank';
     if (typeof classNames === 'string') classNames = [classNames];
     var classNameList = classNames.join('、');
-    var students = combinedStudentData.filter(function(s) {
-        return classNames.indexOf(String(s.class)) >= 0;
-    });
+    const classes = new Set(classNames.map(AppCore.classKey));
+    const inScope = student => classes.has(AppCore.classKey(student.class));
+    const subjectData = student => getSubjectDataByAlias(student, subjectName);
+    var students = combinedStudentData.filter(student => inScope(student) && subjectData(student));
     if (!students.length) return null;
 
     // Validate grade data if grade mode selected
     var tierFallbackNote = '';
     if (tierMode === 'grade') {
-        var hasGradeVal = subjectHasGradeData(students, subjectName);
+        var hasGradeVal = students.some(student => /^[ABC]\+?$/.test(AppCore.grade(subjectData(student)?.grade)));
         if (!hasGradeVal) {
             tierMode = 'rank';
             tierFallbackNote = '> ⚠️ 所选科目无等级数据，已自动切换为排名分层';
@@ -10833,61 +10751,51 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
         totalPop = afl.length || 100;
     }
 
-    // Compute tier for each student for this subject
-    function getSubjTier(rank) {
-        if (rank == null || isNaN(rank) || rank <= 0) return '—';
-        var ratio = rank / totalPop;
-        if (ratio <= 0.2) return '领先';
-        if (ratio <= 0.6) return '中上';
-        if (ratio <= 0.75) return '临界';
-        return '后进';
-    }
+    const subjectPop = combinedStudentData.filter(student => validateSubjectScore(subjectData(student))).length
+        || combinedStudentData.length || students.length;
 
-    function getSubjTierByGrade(grade) {
-        if (!grade || typeof grade !== 'string') return '—';
-        var g = grade.trim().toUpperCase();
-        if (g === 'A+' || g === 'A') return '领先';
-        if (g === 'B+') return '中上';
-        if (g === 'B') return '临界';
-        if (g === 'C+' || g === 'C') return '后进';
-        return '—';
+    // Compute tier for each student for this subject
+    function getStudentSubjectTier(sd, rank) {
+        const gradeTier = tierMode === 'grade' ? getReportTierBySubjectGrade(AppCore.grade(sd?.grade)) : '—';
+        return gradeTier === '—' ? getReportTierByRank(rank, subjectPop) : gradeTier;
     }
 
     // ===== 新增：生态分化与增值计算 =====
     var ecoMetrics = null;
-    var flowMap = {}; // name -> { prevGrade }
+    const flowMap = new Map();
+    const flowDetails = new Map();
+    const displayName = student => classNames.length > 1 ? getStudentDisplayName(student) + '（' + student.class + '）' : getStudentDisplayName(student);
     if (compareBatchId) {
-        var compareBatch = DataPool.batches.find(function(b) { return b.id === compareBatchId; });
+        var compareBatch = getClassReportCompareBatch(compareBatchId);
         if (compareBatch) {
             // --- 增值计算 ---
             var curClassScores = students.map(function(s) {
-                var sd = s.subjects[subjectName];
+                var sd = subjectData(s);
                 return sd ? parseFloat(sd.score) : null;
             }).filter(function(v) { return v != null && !isNaN(v); });
             var curClassAvg = curClassScores.length ? curClassScores.reduce(function(a,b){return a+b;},0) / curClassScores.length : null;
 
             var curGradeScores = combinedStudentData.map(function(s) {
-                var sd = s.subjects[subjectName];
+                var sd = subjectData(s);
                 return sd ? parseFloat(sd.score) : null;
             }).filter(function(v) { return v != null && !isNaN(v); });
             var curGradeAvg = curGradeScores.length ? curGradeScores.reduce(function(a,b){return a+b;},0) / curGradeScores.length : null;
 
-            var cmpStudents = compareBatch.combinedStudentData.filter(function(s) {
-                return classNames.indexOf(String(s.class)) >= 0;
-            });
+            var cmpStudents = compareBatch.combinedStudentData.filter(inScope);
             var cmpClassScores = cmpStudents.map(function(s) {
-                var sd = s.subjects[subjectName];
+                var sd = subjectData(s);
                 return sd ? parseFloat(sd.score) : null;
             }).filter(function(v) { return v != null && !isNaN(v); });
             var cmpClassAvg = cmpClassScores.length ? cmpClassScores.reduce(function(a,b){return a+b;},0) / cmpClassScores.length : null;
 
             var cmpGradeScores = compareBatch.combinedStudentData.map(function(s) {
-                var sd = s.subjects[subjectName];
+                var sd = subjectData(s);
                 return sd ? parseFloat(sd.score) : null;
             }).filter(function(v) { return v != null && !isNaN(v); });
             var cmpGradeAvg = cmpGradeScores.length ? cmpGradeScores.reduce(function(a,b){return a+b;},0) / cmpGradeScores.length : null;
 
-            var valueAdd = (curClassAvg - curGradeAvg) - (cmpClassAvg - cmpGradeAvg);
+            var valueAdd = [curClassAvg,curGradeAvg,cmpClassAvg,cmpGradeAvg].every(Number.isFinite)
+                ? (curClassAvg - curGradeAvg) - (cmpClassAvg - cmpGradeAvg) : null;
 
             var curVariance = curClassScores.length ? curClassScores.reduce(function(sum, s) { return sum + (s - curClassAvg) * (s - curClassAvg); }, 0) / curClassScores.length : null;
             var curStdDev = curVariance != null ? Math.sqrt(curVariance) : null;
@@ -10906,32 +10814,18 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
                 diffStdDev: (curStdDev != null && cmpStdDev != null) ? (curStdDev - cmpStdDev) : null
             };
 
-            // --- 等级流转准备 ---
-            students.forEach(function(s) {
-                var cmpStudent = compareBatch.combinedStudentData.find(function(cs) {
-                    return cs.name === s.name && String(parseInt(cs.class, 10)) === String(parseInt(s.class, 10));
-                });
-                if (!cmpStudent) return;
-                var cmpSd = cmpStudent.subjects[subjectName];
-                if (!cmpSd) return;
-                var prevGrade = cmpSd.grade ? String(cmpSd.grade).trim().toUpperCase() : '';
-                if (prevGrade && /^[ABC][+]?$/.test(prevGrade)) {
-                    flowMap[s.name] = { prevGrade: prevGrade };
-                }
+            compareBatch.combinedStudentData.filter(inScope).forEach(function(student) {
+                const key = AppCore.studentKey(student);
+                flowMap.set(key, flowMap.has(key) ? '' : AppCore.grade(subjectData(student)?.grade));
             });
         }
     }
     var tierStudents = { '领先': [], '中上': [], '临界': [], '后进': [] };
     var allRates = [];
     students.forEach(function(s) {
-        var sd = s.subjects[subjectName];
+        var sd = subjectData(s);
         var rank = sd ? (parseInt(sd.gradeRank, 10) || parseInt(sd.schoolRank, 10) || null) : null;
-        var tier;
-        if (tierMode === 'grade') {
-            tier = getSubjTierByGrade(sd ? sd.grade : '');
-        } else {
-            tier = getSubjTier(rank);
-        }
+        var tier = getStudentSubjectTier(sd, rank);
         if (!tierStudents[tier]) tierStudents[tier] = [];
         var fm = null;
         var fullMarks = expandSubjectFullMarks(getSubjectFullMarksFromInputs());
@@ -10943,8 +10837,10 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
         // Compute grade flow status
         var flowStatus = 'stable';
         var gradeTransition = '';
-        if (flowMap[s.name]) {
-            var prevGrade = flowMap[s.name].prevGrade;
+        const name = displayName(s);
+        const previousGrade = flowMap.get(AppCore.studentKey(s));
+        if (previousGrade) {
+            var prevGrade = previousGrade;
             var curGrade = sd ? String(sd.grade || '').trim().toUpperCase() : '';
             if (curGrade && prevGrade) {
                 var gradeOrder = ['C','C+','B','B+','A','A+'];
@@ -10956,9 +10852,8 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
                 }
             }
         }
-        s._flowStatus = flowStatus;
-        s._gradeTransition = gradeTransition;
-        tierStudents[tier].push({ name: s.name, rank: rank, score: score, rate: rate, flowStatus: flowStatus, gradeTransition: gradeTransition });
+        flowDetails.set(name, {flowStatus, gradeTransition});
+        tierStudents[tier].push({ name, rank, score, rate, flowStatus, gradeTransition });
     });
 
     // ===== 新增：偏科拖累识别 =====
@@ -10966,18 +10861,18 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
     var anchorSN2 = getTotalSubjectName(allSubjectHeaders, combinedStudentData);
     if (anchorSN2) {
         students.forEach(function(s) {
-            var sd = s.subjects[subjectName];
+            var sd = subjectData(s);
             var ts = s.subjects[anchorSN2];
             if (!sd || !ts) return;
             var subjRank = parseInt(sd.gradeRank, 10) || parseInt(sd.schoolRank, 10) || null;
             var totalRank = parseInt(ts.gradeRank, 10) || parseInt(ts.schoolRank, 10) || null;
             if (subjRank == null || totalRank == null || totalPop <= 0) return;
-            var subjRatio = subjRank / totalPop;
+            var subjRatio = subjRank / subjectPop;
             var totalRatio = totalRank / totalPop;
             var gap = subjRatio - totalRatio;
             if (gap > 0.20) {
                 dragStudents.push({
-                    name: s.name,
+                    name: displayName(s),
                     subjRankPct: Math.round(subjRatio * 100),
                     totalRankPct: Math.round(totalRatio * 100),
                     gap: Math.round(gap * 100)
@@ -10994,14 +10889,9 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
     var classWideAgg = {};
     var studentWeakCounts = {};
     students.forEach(function(s) {
-        var sd = s.subjects[subjectName];
+        var sd = subjectData(s);
         var rank = sd ? (parseInt(sd.gradeRank, 10) || parseInt(sd.schoolRank, 10) || null) : null;
-        var tier;
-        if (tierMode === 'grade') {
-            tier = getSubjTierByGrade(sd ? sd.grade : '');
-        } else {
-            tier = getSubjTier(rank);
-        }
+        var tier = getStudentSubjectTier(sd, rank);
         if (!tierWeakAgg[tier]) tierWeakAgg[tier] = {};
         if (!tierCorrectAns[tier]) tierCorrectAns[tier] = {};
         if (sd && sd.subScores) {
@@ -11026,9 +10916,10 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
                     var ans = String(item.studentAnswer || '').toUpperCase().trim();
                     if (ans) tierWeakAgg[tier][itemName].answers[ans] = (tierWeakAgg[tier][itemName].answers[ans] || 0) + 1;
                     // Track per-student weak items for targeted help
-                    if (!studentWeakCounts[s.name]) studentWeakCounts[s.name] = { tier: tier, count: 0, items: [] };
-                    studentWeakCounts[s.name].count++;
-                    if (studentWeakCounts[s.name].items.length < 15) studentWeakCounts[s.name].items.push(itemName);
+                    const name = displayName(s);
+                    if (!studentWeakCounts[name]) studentWeakCounts[name] = { tier: tier, count: 0, items: [] };
+                    studentWeakCounts[name].count++;
+                    if (studentWeakCounts[name].items.length < 15) studentWeakCounts[name].items.push(itemName);
                 }
             });
         }
@@ -11117,6 +11008,7 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
         lines.push('|------|------|--------|------|---------|');
         lines.push('| ' + displayClass + ' | ' + subjectName + ' | ' + students.length + ' | ' + (fm || '—') + ' | ' + threshold + ' |');
     }
+    lines.push('', '本次批次：' + (DataPool.getCurrentBatch()?.label || '当前数据'));
     if (tierFallbackNote) lines.push(tierFallbackNote);
     lines.push('');
 
@@ -11354,13 +11246,8 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
         lines.push('|------|------|---------|---------|-------------|');
         helpStudents.forEach(function(name) {
             var info = studentWeakCounts[name];
-            var stu = students.find(function(s) { return s.name === name; });
-            var flowTag = '';
-            if (stu && stu._gradeTransition) {
-                flowTag = stu._gradeTransition + (stu._flowStatus === 'up' ? '📈' : '⚠️');
-            } else {
-                flowTag = '—';
-            }
+            const flow = flowDetails.get(name);
+            var flowTag = flow?.gradeTransition ? flow.gradeTransition + (flow.flowStatus === 'up' ? '📈' : '⚠️') : '—';
             // Check if also in drag list
             var dragMatch = dragStudents.find(function(d) { return d.name === name; });
             var dragTag = dragMatch ? ' 🔴偏科' : '';
@@ -11414,11 +11301,8 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
         lines.push('| ' + tierLabel + ' | ' + stus.length + ' | ' + pct + '% | ' + nameStr + ' |');
     });
     lines.push('');
-    if (hasCompare && ecoMetrics) {
-        var valDir = ecoMetrics.valueAdd >= 0 ? '正向产出' : '相对衰退';
-        var sdDir = ecoMetrics.diffStdDev > 0 ? '分化加剧' : '分化缓解';
-        lines.push('**教学效能提示**：增值评价为 **' + (ecoMetrics.valueAdd >= 0 ? '+' : '') + ecoMetrics.valueAdd.toFixed(1) + '**，教学处于「' + valDir + '」阶段；班级标准差变化提示 **' + sdDir + '**。');
-        lines.push('');
+    if (hasCompare && ecoMetrics.valueAdd == null) {
+        lines.push('本次或对照缺少有效均分，无法计算相对年级的变化。', '');
     }
     lines.push('请从班级管理者角度分析：各层人数分布是否合理？哪些层需要重点关注？教学资源应如何向关键层倾斜？');
     lines.push('');
@@ -11438,6 +11322,21 @@ function generateSingleSubjectClassReport(classNames, subjectName, threshold, ti
         lines.push('| ' + tierLabel + ' | ' + nameList + ' | ' + suggest1 + ' | ' + suggest2 + ' |');
     });
     lines.push('');
+
+    const itemRows = students.map(student => ({subScores:subjectData(student).subScores || {}}));
+    const weak = getSubjectItemAverageRates(itemRows).filter(item => item.rate < threshold);
+    const choices = getSubjectChoiceDistribution(itemRows);
+    lines.push('## 有效小题得分率低于阈值', '',
+        diagnosisMarkdownTable(['题号','全体得分率','有效计分人数'],
+            weak.map(item => [item.item,Math.round(item.rate * 100) + '%',item.count]),
+            '没有符合条件的有效计分记录。'), '',
+        '## 选择题答案分布', '',
+        diagnosisMarkdownTable(['题号','正确答案','答案分布','可计算错选率'],
+            choices.map(item => [item.item,item.correct,
+                Object.entries(item.counts).map(([answer,count]) => answer + '：' + count + '人').join('、'),
+                item.wrongRate == null ? '—' : Math.round(item.wrongRate * 100) + '%']),
+            '当前批次没有可识别的选择题选项记录。'), '',
+        '选择题错选率以可识别作答为分母。主观题归因需结合原卷、答卷与评分细则。', '');
 
     return sanitizeMarkdownImagesForAi(lines.join('\n'));
 }
@@ -11462,12 +11361,7 @@ document.getElementById('comprehensiveSubjBtn').addEventListener('click', async 
         ? document.getElementById('comprehensiveSubjCompareBatch').value : '';
     var report = generateSingleSubjectClassReport(classNames, subjectName, threshold, tierMode, compareBatchId || null);
     if (!report) { await showAlert('生成失败，请检查数据'); return; }
-    document.getElementById('comprehensivePlaceholder').style.display = 'none';
-    document.getElementById('comprehensiveOutput').style.display = 'block';
-    hideStudentReadableReport();
-    hideComprehensiveReadableReport();
-    document.getElementById('comprehensiveDataContent').textContent = report;
-    document.getElementById('comprehensiveDataContent').dataset.mode = 'subj';
+    showComprehensiveMarkdown(report, 'subj');
 });
 
 // Seating analysis button
@@ -11477,12 +11371,7 @@ document.getElementById('comprehensiveSeatingBtn').addEventListener('click', asy
     if (!students.length) { await showAlert('该班级没有学生数据'); return; }
     var report = generateSeatingReport(className);
     if (!report) { await showAlert('生成失败'); return; }
-    document.getElementById('comprehensivePlaceholder').style.display = 'none';
-    document.getElementById('comprehensiveOutput').style.display = 'block';
-    hideStudentReadableReport();
-    hideComprehensiveReadableReport();
-    document.getElementById('comprehensiveDataContent').textContent = report;
-    document.getElementById('comprehensiveDataContent').dataset.mode = 'seating';
+    showComprehensiveMarkdown(report, 'seating');
 });
 document.getElementById('comprehensiveCopyBtn').addEventListener('click', function() {
     var ta = document.getElementById('comprehensiveDataContent');
@@ -11601,7 +11490,6 @@ document.getElementById('smartSubjBtn').addEventListener('click', async function
     }
     syncSmart('smartSubjFilter', 'comprehensiveSubjFilter');
     syncSmart('smartSubjTierMode', 'comprehensiveSubjTierMode');
-    syncSmart('smartSubjCompareBatch', 'comprehensiveSubjCompareBatch');
     var ta = document.getElementById('comprehensiveDataContent');
     if (ta) ta.dataset.mode = 'subj';
     var ph = document.getElementById('smartPlaceholder');
@@ -11772,11 +11660,15 @@ function renderProgressAnalysis(baseBatch, cmpBatch, className, subjectName) {
     // Hide other outputs
     document.getElementById('comprehensiveOutput').style.display = 'none';
     document.getElementById('criticalOutput').style.display = 'none';
+    document.getElementById('corrOutput').style.display = 'none';
     hideStudentReadableReport();
     hideComprehensiveReadableReport();
     output.style.display = 'block';
     document.getElementById('comprehensivePlaceholder').style.display = 'none';
     var progress = buildProgressAnalysisData(baseBatch, cmpBatch, className, subjectName);
+    const markdown = document.getElementById('progressMarkdownBtn');
+    markdown.disabled = !progress?.results.length;
+    markdown.onclick = markdown.disabled ? null : () => showComprehensiveMarkdown(formatProgressDiagnosis(progress), 'progress');
     if (!progress || !progress.results.length) {
         container.innerHTML = '<div class="no-data">两个批次之间没有匹配的学生数据</div>';
         return;
@@ -11845,11 +11737,13 @@ function renderCriticalAlert(className, subject, passLine, range) {
     if (!output || !container) return;
     document.getElementById('comprehensiveOutput').style.display = 'none';
     document.getElementById('progressOutput').style.display = 'none';
+    document.getElementById('corrOutput').style.display = 'none';
     hideStudentReadableReport();
     hideComprehensiveReadableReport();
     output.style.display = 'block';
     document.getElementById('comprehensivePlaceholder').style.display = 'none';
     var data = buildCriticalAlertData(className, subject, passLine, range);
+    document.getElementById('criticalMarkdownBtn').onclick = () => showComprehensiveMarkdown(formatCriticalDiagnosis(data), 'critical');
     if (!data.multi) {
         if (!data.students.length) {
             container.innerHTML = '<div class="no-data">「' + escapeHtml(className) + '」在「' + escapeHtml(subject) + '」科目中，分数线 ' + Number(passLine).toFixed(1) + ' 分 ±' + range + ' 分范围内暂无限界生</div>';
