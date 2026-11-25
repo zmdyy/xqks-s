@@ -1110,9 +1110,28 @@ function getClassReportImportedGradeRanks(batch) {
     return ranks;
 }
 
-function buildClassReportLeaderboards(students, batch, compareBatch, columns) {
-    const currentRanks = getClassReportImportedGradeRanks(batch);
-    const previousRanks = getClassReportImportedGradeRanks(compareBatch);
+function getClassReportGradeRanks(data, column, importedRanks) {
+    const ranks = new Map();
+    for (const student of data) {
+        const key = AppCore.studentKey(student);
+        const bySubject = importedRanks.get(key);
+        const rank = column.keys.map(subject => bySubject?.get(subject)).find(Number.isInteger);
+        if (rank !== undefined) ranks.set(key, rank);
+    }
+    if (ranks.size) return ranks;
+
+    // A single class cannot provide a grade-wide ranking without imported ranks.
+    const entries = rankClassDiffScores(data, column.score);
+    const classes = new Set(entries.map(entry => AppCore.classKey(entry.student.class)).filter(Boolean));
+    if (classes.size > 1) {
+        for (const { student, rank } of entries) ranks.set(AppCore.studentKey(student), rank);
+    }
+    return ranks;
+}
+
+function buildClassReportLeaderboards(students, currentData, batch, compareBatch, columns) {
+    const currentImported = getClassReportImportedGradeRanks(batch);
+    const previousImported = getClassReportImportedGradeRanks(compareBatch);
     const previousData = compareBatch?.combinedStudentData || [];
     const previousColumns = getClassDiffTopTenSubjects(previousData, compareBatch?.allSubjectHeaders || [], true);
     const canonicalSubject = label => /^(道法|道德与法治|政治|思想政治|思想品德)$/.test(label) ? '道德与法治' : label;
@@ -1122,41 +1141,45 @@ function buildClassReportLeaderboards(students, batch, compareBatch, columns) {
         const key = AppCore.studentKey(student);
         previousByStudent.set(key, previousByStudent.has(key) ? null : student);
     }
-    const getGradeRank = (ranks, student, column) => {
-        const bySubject = ranks.get(AppCore.studentKey(student));
-        return column.keys.map(key => bySubject?.get(key)).find(Number.isInteger) ?? null;
-    };
 
     return columns.map(column => {
-        const classTop = rankClassDiffScores(students, column.score).filter(entry => entry.rank <= 10);
+        const currentRanks = getClassReportGradeRanks(currentData, column, currentImported);
+        const classTop = rankClassDiffScores(students, column.score).filter(entry => entry.rank <= 10)
+            .map(entry => ({ ...entry, gradeRank:currentRanks.get(AppCore.studentKey(entry.student)) }));
         const classRanks = students.map(student => ({
-            student, rank:getGradeRank(currentRanks, student, column)
-        })).filter(entry => entry.rank !== null);
-        const gradeTop = classRanks.filter(entry => entry.rank <= 10).sort((a, b) => a.rank - b.rank);
+            student, rank:currentRanks.get(AppCore.studentKey(student))
+        })).filter(entry => entry.rank !== undefined);
         const priorColumn = previousBySubject.get(canonicalSubject(column.label));
-        const comparable = priorColumn ? classRanks.flatMap(({student, rank}) => {
-            if (!previousByStudent.get(AppCore.studentKey(student))) return [];
-            const priorRank = getGradeRank(previousRanks, student, priorColumn);
-            if (priorRank === null) return [];
+        const previousRanks = priorColumn ? getClassReportGradeRanks(previousData, priorColumn, previousImported) : new Map();
+        const comparable = classRanks.flatMap(({student, rank}) => {
+            const key = AppCore.studentKey(student);
+            const priorRank = previousRanks.get(key);
+            if (priorRank === undefined || !previousByStudent.get(key)) return [];
             return [{name:getStudentDisplayName(student), compareRank:priorRank, curRank:rank, change:priorRank - rank}];
-        }) : [];
+        });
         const improved = comparable.filter(entry => entry.change > 0)
             .sort((a, b) => b.change - a.change || a.curRank - b.curRank || a.name.localeCompare(b.name, 'zh-CN'))
             .slice(0, 10);
-        return {subject:column.label, classTop, gradeTop, hasGradeRanks:classRanks.length > 0, comparable, improved};
+        const progressMessage = comparable.length ? '本班无人进步'
+            : !currentRanks.size ? '本次缺少年级排名数据'
+            : !previousRanks.size ? '对照批次缺少年级排名数据'
+            : '无学生在两次均有有效名次';
+        return {
+            label:column.label, entries:classTop, comparable, improved, progressMessage,
+            gradeTopCount:classRanks.length ? classRanks.filter(entry => entry.rank <= 10).length : null
+        };
     });
 }
 
-function renderClassReportLeaderboard(title, key, rows, entriesFor, formatEntry, emptyText) {
-    return '<div class="sr-class-leaderboard" data-class-leaderboard="' + key + '"><h4>' + title + '</h4>'
+function renderClassReportProgressTable(rows) {
+    return '<div class="sr-class-leaderboard" data-class-leaderboard="improved"><h4>年级名次进步前十</h4>'
         + '<table class="sr-table"><thead><tr><th scope="col">科目</th><th scope="col">学生名单</th></tr></thead><tbody>'
-        + rows.map(row => {
-            const entries = entriesFor(row);
-            return '<tr><th scope="row">' + escapeHtml(row.subject) + '</th><td>'
-                + (entries.length ? entries.map(entry => '<span class="sr-class-leaderboard-entry">' + formatEntry(entry) + '</span>').join('')
-                    : '<span class="sr-class-leaderboard-empty">' + emptyText(row) + '</span>')
-                + '</td></tr>';
-        }).join('') + '</tbody></table></div>';
+        + rows.map(row => '<tr><th scope="row">' + escapeHtml(row.label) + '</th><td>'
+            + (row.improved.length ? row.improved.map(entry => '<span class="sr-class-leaderboard-entry">'
+                + escapeHtml(entry.name) + '<small>' + entry.compareRank + ' → ' + entry.curRank
+                + '</small><b class="sr-class-leaderboard-gain">↑' + entry.change + '</b></span>').join('')
+                : '<span class="sr-class-leaderboard-empty">' + row.progressMessage + '</span>')
+            + '</td></tr>').join('') + '</tbody></table></div>';
 }
 
 function renderClassReadableReport(className, compareBatchId) {
@@ -1165,7 +1188,7 @@ function renderClassReadableReport(className, compareBatchId) {
     if (!output || !content) return false;
     var students = combinedStudentData.filter(function(s) { return AppCore.classKey(s.class) === AppCore.classKey(className); });
     if (!students.length) return false;
-    var columns = getClassDiffTopTenSubjects(students, allSubjectHeaders, true);
+    var columns = getClassDiffTopTenSubjects(combinedStudentData, allSubjectHeaders, true);
     var totalName = columns[0].keys[0] || '';
     var batch = DataPool.getCurrentBatch ? DataPool.getCurrentBatch() : null;
     var compareBatch = getClassReportCompareBatch(compareBatchId);
@@ -1179,7 +1202,7 @@ function renderClassReadableReport(className, compareBatchId) {
     }).filter(function(s) { return s.score != null || s.rank != null || s.grade; });
     var validScores = scores.filter(function(s) { return s.score != null; }).map(function(s) { return s.score; });
     var avgScore = validScores.length ? validScores.reduce(function(a,b){return a+b;},0) / validScores.length : null;
-    var leaderboards = buildClassReportLeaderboards(students, batch, compareBatch, columns);
+    var leaderboards = buildClassReportLeaderboards(students, combinedStudentData, batch, compareBatch, columns);
     var totalBoard = leaderboards[0];
     var progressRows = totalBoard.comparable;
     var subjectRankRows = getClassSubjectRankRowsForReport(className, compareBatch);
@@ -1191,21 +1214,16 @@ function renderClassReadableReport(className, compareBatchId) {
     html.push('<div class="sr-kpis">');
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">学生人数</div><div class="sr-kpi-value">' + students.length + '</div></div>');
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">总分均分</div><div class="sr-kpi-value">' + (avgScore == null ? '-' : avgScore.toFixed(1)) + '</div></div>');
-    html.push('<div class="sr-kpi"><div class="sr-kpi-label">年级前10</div><div class="sr-kpi-value">' + (totalBoard.hasGradeRanks ? totalBoard.gradeTop.length : '—') + '</div></div>');
+    html.push('<div class="sr-kpi"><div class="sr-kpi-label">年级前10</div><div class="sr-kpi-value">' + (totalBoard.gradeTopCount ?? '—') + '</div></div>');
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">' + (hasCompare ? '可对照人数' : '均分排名项目') + '</div><div class="sr-kpi-value">' + (hasCompare ? progressRows.length : subjectRankRows.filter(function(r){ return r.currentRank != null; }).length) + '</div></div>');
     html.push('</div>');
     html.push('<div class="sr-section"><h3>一、学生榜单</h3>');
-    html.push(renderClassReportLeaderboard('班内前十', 'class', leaderboards, row => row.classTop,
-        entry => '<b>' + entry.rank + '</b> ' + escapeHtml(getStudentDisplayName(entry.student)) + '<small>' + entry.score + ' 分</small>',
-        () => '暂无有效分数'));
-    html.push(renderClassReportLeaderboard('本班进入年级前十', 'grade', leaderboards, row => row.gradeTop,
-        entry => '<b>第 ' + entry.rank + ' 名</b> ' + escapeHtml(getStudentDisplayName(entry.student)),
-        row => row.hasGradeRanks ? '本班无人进入前十' : '暂无可核对的年级名次'));
-    html.push('<div class="sr-note-box">班内前十按实际得分，同分并列。年级名次取原始成绩表的年级名次。</div>');
+    html.push('<div class="sr-class-leaderboard"><h4 id="classReportTopTenTitle">班内各科前十</h4>');
+    html.push('<p class="sr-class-top-ten-legend"><span class="class-top-ten-grade-top">金色姓名</span>表示年级前十。没有原表年级名次时，按该批次各班有效成绩排名。</p>');
+    html.push('<div class="scroll-container class-top-ten-scroll sr-class-top-ten-scroll" tabindex="0" role="region" aria-labelledby="classReportTopTenTitle">');
+    html.push('<table class="class-top-ten-table" id="classReportTopTenTable" aria-labelledby="classReportTopTenTitle"><thead></thead><tbody></tbody></table></div></div>');
     if (hasCompare) {
-        html.push(renderClassReportLeaderboard('年级名次进步前十', 'improved', leaderboards, row => row.improved,
-            entry => escapeHtml(entry.name) + '<small>' + entry.compareRank + ' → ' + entry.curRank + '</small><b class="sr-class-leaderboard-gain">↑' + entry.change + '</b>',
-            row => row.comparable.length ? '暂无名次进步' : '暂无可对照的年级名次'));
+        html.push(renderClassReportProgressTable(leaderboards));
     } else {
         html.push('<div class="sr-class-leaderboard"><h4>年级名次进步前十</h4><div class="sr-note-box">选择对照批次后显示进步榜。</div></div>');
     }
@@ -1246,6 +1264,7 @@ function renderClassReadableReport(className, compareBatchId) {
     }
     html.push('</div>');
     content.innerHTML = html.join('');
+    renderClassTopTenTable(document.getElementById('classReportTopTenTable'), leaderboards);
     output.dataset.backTarget = 'comprehensiveOutput';
     output.dataset.printTitle = [normalizeClassName(className), '班级学情图文报告', (batch ? batch.label : '当前批次') + (hasCompare ? '_对比_' + compareBatch.label : ''), getTodayString()].join('_');
     document.getElementById('comprehensiveOutput').style.display = 'none';
