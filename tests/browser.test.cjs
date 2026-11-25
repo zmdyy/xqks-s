@@ -210,8 +210,16 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
             importedCurrent[1].subjects.物理.schoolRank = 1;
             current.uploadedFilesData = { main:{ fileType:'main', studentData:importedCurrent } };
             prior.uploadedFilesData = { main:{ fileType:'main', studentData:AppCore.clone(prior.combinedStudentData) } };
-            const readProgress = () => Object.fromEntries([...document.querySelectorAll('[data-class-leaderboard="improved"] tbody tr')]
-                .map(row => [row.cells[0].textContent, [...row.querySelectorAll('.sr-class-leaderboard-entry')].map(entry => entry.textContent)]));
+            const progressTable = () => document.querySelector('[data-class-leaderboard="improved"] table');
+            const readProgress = () => {
+                const table = progressTable();
+                const rows = Array.from(table.tBodies[0].rows);
+                return Object.fromEntries(Array.from(table.tHead.rows[0].cells, (header, index) => [
+                    header.textContent,
+                    rows.map(row => row.cells[index]).filter(cell => cell.querySelector('.sr-class-progress-entry'))
+                        .map(cell => ['name','gain','change'].map(part => cell.querySelector('.sr-class-progress-' + part).textContent))
+                ]));
+            };
             const readClassTable = () => {
                 const table = document.getElementById('classReportTopTenTable');
                 return Object.fromEntries([...table.tHead.rows[0].cells].map((header, index) => [header.textContent,
@@ -240,11 +248,23 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
                     class:readClassTable(), improved:readProgress(),
                     gradeTable:!!document.querySelector('[data-class-leaderboard="grade"]')
                 };
+                const table = progressTable();
+                const firstCell = table.tBodies[0].rows[0].cells[0];
+                const name = firstCell.querySelector('.sr-class-progress-name');
+                const gain = firstCell.querySelector('.sr-class-progress-gain');
+                const change = firstCell.querySelector('.sr-class-progress-change');
+                result.layout = {
+                    twoLines:gain.getBoundingClientRect().bottom <= change.getBoundingClientRect().top,
+                    nameOnLeft:name.getBoundingClientRect().right <= change.getBoundingClientRect().left,
+                    fontSizes:[name,gain,change].map(node => getComputedStyle(node).fontSize),
+                    heights:[...table.tBodies[0].rows].map(row => row.getBoundingClientRect().height)
+                };
                 current.combinedStudentData = roster;
                 document.getElementById('smartClassBtn').click();
                 result.singleClassGold = readClassTable().数学.some(entry => entry.gold);
-                result.singleClassMessage = [...document.querySelectorAll('[data-class-leaderboard="improved"] tbody tr')]
-                    .find(row => row.cells[0].textContent === '数学').cells[1].textContent;
+                const mathColumn = [...progressTable().tHead.rows[0].cells].findIndex(header => header.textContent === '数学');
+                result.singleClassMessages = [...progressTable().tBodies[0].rows]
+                    .map(row => row.cells[mathColumn].textContent.trim()).filter(Boolean);
                 compareSelect.value = '';
                 document.getElementById('smartClassBtn').click();
                 result.noCompare = document.getElementById('comprehensiveReadableReportContent').textContent.includes('选择对照批次后显示进步榜');
@@ -267,13 +287,18 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
             ['榜单学生00','榜单学生02','榜单学生03']);
         assert.equal(classReport.class.数学.filter(entry => entry.gold).length,9);
         assert.equal(classReport.class.数学[0].gradeRank,'年级第 2 名');
+        assert.deepEqual(Object.keys(classReport.improved),['总分','物理','数学']);
         assert.equal(classReport.improved.总分.length,10);
-        assert.equal(classReport.improved.总分[0],'榜单学生03900 → 23↑877');
-        assert.equal(classReport.improved.物理[0],'榜单学生03102 → 2↑100');
-        assert.ok(classReport.improved.物理.every(entry => !entry.includes('榜单学生01')));
-        assert.deepEqual(classReport.improved.数学,['榜单学生0313 → 5↑8']);
+        assert.deepEqual(classReport.improved.总分[0],['榜单学生03','↑877','900 → 23']);
+        assert.deepEqual(classReport.improved.物理[0],['榜单学生03','↑100','102 → 2']);
+        assert.ok(classReport.improved.物理.every(([name]) => name !== '榜单学生01'));
+        assert.deepEqual(classReport.improved.数学,[['榜单学生03','↑8','13 → 5']]);
+        assert.ok(classReport.layout.twoLines && classReport.layout.nameOnLeft);
+        assert.deepEqual(classReport.layout.fontSizes,['16px','14px','11px']);
+        assert.equal(classReport.layout.heights.length,10);
+        assert.ok(classReport.layout.heights.every(height => height === 48));
         assert.equal(classReport.singleClassGold,false);
-        assert.equal(classReport.singleClassMessage,'本次缺少年级排名数据');
+        assert.deepEqual(classReport.singleClassMessages,['本次缺少年级排名数据']);
         assert.ok(classReport.noCompare);
         await page.click('[data-tab="tab-collective"]');
         await page.selectOption('#collectiveSubjectFilter','物理'); await page.waitForTimeout(160);
