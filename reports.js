@@ -1142,6 +1142,7 @@ function buildClassReportLeaderboards(students, currentData, batch, compareBatch
         previousByStudent.set(key, previousByStudent.has(key) ? null : student);
     }
 
+    const compareRankChangeTies = (a, b) => a.curRank - b.curRank || a.name.localeCompare(b.name, 'zh-CN');
     return columns.map(column => {
         const currentRanks = getClassReportGradeRanks(currentData, column, currentImported);
         const classTop = rankClassDiffScores(students, column.score).filter(entry => entry.rank <= 10)
@@ -1158,44 +1159,52 @@ function buildClassReportLeaderboards(students, currentData, batch, compareBatch
             return [{name:getStudentDisplayName(student), compareRank:priorRank, curRank:rank, change:priorRank - rank}];
         });
         const improved = comparable.filter(entry => entry.change > 0)
-            .sort((a, b) => b.change - a.change || a.curRank - b.curRank || a.name.localeCompare(b.name, 'zh-CN'))
+            .sort((a, b) => b.change - a.change || compareRankChangeTies(a, b))
             .slice(0, 10);
-        const progressMessage = comparable.length ? '本班无人进步'
+        const declined = comparable.filter(entry => entry.change < 0)
+            .sort((a, b) => a.change - b.change || compareRankChangeTies(a, b))
+            .slice(0, 10);
+        const unavailableMessage = comparable.length ? null
             : !currentRanks.size ? '本次缺少年级排名数据'
             : !previousRanks.size ? '对照批次缺少年级排名数据'
             : '无学生在两次均有有效名次';
         return {
-            label:column.label, entries:classTop, comparable, improved, progressMessage,
+            label:column.label, entries:classTop, comparable, improved, declined, unavailableMessage,
             gradeTopCount:classRanks.length ? classRanks.filter(entry => entry.rank <= 10).length : null
         };
     });
 }
 
-function renderClassReportProgressTable(columns) {
+function renderClassReportRankChangeTable(columns, kind) {
+    const declining = kind === 'declined';
+    const title = declining ? '年级名次退步前十' : '年级名次进步前十';
+    const titleId = declining ? 'classReportDeclineTitle' : 'classReportProgressTitle';
+    const arrow = declining ? '↓' : '↑';
+    const emptyMessage = declining ? '本班无人退步' : '本班无人进步';
     const header = columns.map(column => `<th scope="col">${escapeHtml(column.label)}</th>`).join('');
-    const rowCount = Math.max(1, ...columns.map(column => column.improved.length));
+    const rowCount = Math.max(1, ...columns.map(column => column[kind].length));
     const rows = Array.from({ length:rowCount }, (_, index) => {
         const cells = columns.map(column => {
-            const entry = column.improved[index];
+            const entry = column[kind][index];
             if (entry) {
                 return `<td><div class="sr-class-progress-entry">
                     <span class="sr-class-progress-name">${escapeHtml(entry.name)}</span>
                     <div class="sr-class-progress-ranks">
-                        <strong class="sr-class-progress-gain">↑${entry.change}</strong>
+                        <strong class="sr-class-progress-delta">${arrow}${Math.abs(entry.change)}</strong>
                         <small class="sr-class-progress-change">${entry.compareRank} → ${entry.curRank}</small>
                     </div>
                 </div></td>`;
             }
-            if (index === 0) return `<td><span class="sr-class-progress-empty">${escapeHtml(column.progressMessage)}</span></td>`;
+            if (index === 0) return `<td><span class="sr-class-progress-empty">${escapeHtml(column.unavailableMessage ?? emptyMessage)}</span></td>`;
             return '<td></td>';
         }).join('');
         return `<tr>${cells}</tr>`;
     }).join('');
-    return `<div class="sr-class-leaderboard" data-class-leaderboard="improved">
-        <h4 id="classReportProgressTitle">年级名次进步前十</h4>
+    return `<div class="sr-class-leaderboard" data-class-leaderboard="${kind}">
+        <h4 id="${titleId}">${title}</h4>
         <div class="scroll-container class-top-ten-scroll sr-class-top-ten-scroll sr-class-progress-scroll"
-            tabindex="0" role="region" aria-labelledby="classReportProgressTitle">
-            <table class="class-top-ten-table sr-class-progress-table" aria-labelledby="classReportProgressTitle">
+            tabindex="0" role="region" aria-labelledby="${titleId}">
+            <table class="class-top-ten-table sr-class-progress-table" aria-labelledby="${titleId}">
                 <thead><tr>${header}</tr></thead>
                 <tbody>${rows}</tbody>
             </table>
@@ -1244,9 +1253,10 @@ function renderClassReadableReport(className, compareBatchId) {
     html.push('<div class="scroll-container class-top-ten-scroll sr-class-top-ten-scroll" tabindex="0" role="region" aria-labelledby="classReportTopTenTitle">');
     html.push('<table class="class-top-ten-table" id="classReportTopTenTable" aria-labelledby="classReportTopTenTitle"><thead></thead><tbody></tbody></table></div></div>');
     if (hasCompare) {
-        html.push(renderClassReportProgressTable(leaderboards));
+        html.push(renderClassReportRankChangeTable(leaderboards, 'improved'));
+        html.push(renderClassReportRankChangeTable(leaderboards, 'declined'));
     } else {
-        html.push('<div class="sr-class-leaderboard"><h4>年级名次进步前十</h4><div class="sr-note-box">选择对照批次后显示进步榜。</div></div>');
+        html.push('<div class="sr-class-leaderboard"><h4>年级名次进退步前十</h4><div class="sr-note-box">选择对照批次后显示进步榜和退步榜。</div></div>');
     }
     html.push('</div>');
 
