@@ -2629,10 +2629,10 @@ function getCriticalExamPassLine(exam, subject, mode, cardLine) {
     return cardLine;
 }
 
-function getCriticalStudentScore(exam, name, subject) {
+function getCriticalStudentScore(exam, studentKey, subject) {
     var list = exam.students || [];
     for (var i = 0; i < list.length; i++) {
-        if (String(list[i].name) !== String(name)) continue;
+        if (AppCore.studentKey(list[i]) !== studentKey) continue;
         var sd = getSubjectDataByAlias(list[i], subject);
         if (!sd) return NaN;
         var sc = parseFloat(sd.score);
@@ -2692,7 +2692,8 @@ function buildCriticalAlertData(className, subject, passLine, range) {
     var currentLine = currentExam && currentExam.line != null ? currentExam.line : passLine;
     var multi = examMeta.length >= 2;
 
-    function inClass(s) { return String(s.class) === String(className); }
+    const classKey = AppCore.classKey(className);
+    function inClass(s) { return AppCore.classKey(s.class) === classKey; }
 
     if (!multi) {
         var src = (currentExam && currentExam.students) || combinedStudentData || [];
@@ -2709,19 +2710,19 @@ function buildCriticalAlertData(className, subject, passLine, range) {
         return { className: className, subject: subject, passLine: currentLine, range: range, lineSource: currentExam ? currentExam.hint : lineSource, multi: false, exams: examMeta, students: students, groups: null };
     }
 
-    var nameMap = {};
+    const byStudent = new Map();
     examMeta.forEach(function(ex) {
-        (ex.students || []).filter(inClass).forEach(function(s) {
-            if (!s || !s.name) return;
-            if (!nameMap[s.name]) nameMap[s.name] = s;
+        (ex.students || []).filter(inClass).forEach(function(student) {
+            if (!AppCore.text(student.name)) return;
+            const key = AppCore.studentKey(student);
+            if (!byStudent.has(key)) byStudent.set(key, student);
         });
     });
     var groups = { improve: [], drop: [], newIn: [], persist: [] };
     var roster = [];
-    Object.keys(nameMap).forEach(function(name) {
-        var stu = nameMap[name];
+    byStudent.forEach(function(stu, key) {
         var points = examMeta.map(function(ex) {
-            var score = getCriticalStudentScore(ex, name, subject);
+            var score = getCriticalStudentScore(ex, key, subject);
             var zone = classifyCriticalZone(score, ex.line, range);
             return {
                 examId: ex.id,
@@ -2738,7 +2739,7 @@ function buildCriticalAlertData(className, subject, passLine, range) {
         var cur = points[0] || {};
         var row = {
             name: getStudentDisplayName(stu),
-            rawName: name,
+            rawName: stu.name,
             className: stu.class,
             category: cat,
             categoryLabel: cat ? CRITICAL_CATEGORY_META[cat].label : '',
