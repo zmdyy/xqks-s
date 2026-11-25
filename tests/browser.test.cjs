@@ -180,14 +180,23 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
             };
         });
         assert.deepEqual(weakColors,{personal:'#a23e1b',group:'#176681',zeros:'#fff0e8',rendered:true,values:[50,50]});
+        await page.click('[data-tab="tab-comprehensive"]');
+        await page.fill('#comprehensiveNameSearch','赵六');
+        await page.locator('#comprehensiveNameSuggest .student-suggest-item[data-display-name="赵六"]').click();
+        await page.click('#comprehensiveGenerateBtn');
+        const individualMarkdown = await page.locator('#comprehensiveDataContent').textContent();
+        assert.match(individualMarkdown, /个人得分率 \| 全体得分率 \| 个人 − 全体/);
+        assert.match(individualMarkdown, /0% \| 50% \| -50 个百分点/);
+        await page.click('[data-tab="tab-smart"]');
         const classReport = await page.evaluate(() => {
-            const saved = { batches:DataPool.batches, id:DataPool.currentBatchId };
+            const saved = { batches:DataPool.batches, id:DataPool.currentBatchId, rows:combinedStudentData, headers:allSubjectHeaders };
             const roster = Array.from({ length:12 }, (_, i) => ({
                 name:'榜单学生' + String(i).padStart(2, '0'),
                 class:'01班',
                 subjects:{
                     总分:{ score:500 - (i === 10 ? 9 : i), gradeRank:[3,10,10][i] ?? 20 + i },
-                    物理:{ score:100 - i, gradeRank:[4,1,9,2][i] ?? 20 + i },
+                    物理:{ score:100 - i, grade:'B', gradeRank:[4,1,9,2][i] ?? 20 + i,
+                        subScores:{'1':{score:i ? 1 : 0,maxScore:2,studentAnswer:i ? 'B' : 'A',correctAnswer:'B'}} },
                     数学:{ score:100 - i },
                     历史:{ score:95 - i, gradeRank:i === 0 ? 1 : 30 + 3 * i }
                 }
@@ -205,6 +214,7 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
                 student.subjects.总分.gradeRank = i === 3 ? 900 : 100 + i;
                 student.subjects.物理.gradeRank = i === 3 ? 102 : 50 + i;
                 if (student.subjects.历史) student.subjects.历史.gradeRank = i + 1;
+                if (i === 0) student.subjects.物理.grade = 'C';
             });
             prior.combinedStudentData[3].subjects.数学.score = 30;
             const importedCurrent = AppCore.clone(current.combinedStudentData);
@@ -265,6 +275,7 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
                 const decline = declineTable.querySelector('.sr-class-progress-delta');
                 result.declineColor = getComputedStyle(decline).color;
                 result.noDecline = [...declineTable.tBodies[0].rows].map(row => row.cells[0].textContent.trim()).filter(Boolean);
+                const originalCurrentRows = current.combinedStudentData;
                 current.combinedStudentData = roster;
                 document.getElementById('smartClassBtn').click();
                 result.singleClassGold = readClassTable().数学.some(entry => entry.gold);
@@ -277,11 +288,51 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
                 document.getElementById('smartClassBtn').click();
                 result.noCompare = document.getElementById('comprehensiveReadableReportContent').textContent.includes('选择对照批次后显示进步榜和退步榜');
                 result.noDeclineWithoutCompare = !progressTable('declined');
+
+                current.combinedStudentData = originalCurrentRows;
+                DataPool.currentBatchId = current.id;
+                combinedStudentData = originalCurrentRows;
+                allSubjectHeaders = current.allSubjectHeaders;
+                switchTab('tab-comprehensive');
+                const markdown = document.getElementById('comprehensiveDataContent');
+                const run = (id, report) => {
+                    document.getElementById(id).click();
+                    if (document.getElementById('comprehensiveOutput').style.display === 'none') throw new Error(id + ' 未生成报告');
+                    result[report] = markdown.textContent;
+                };
+                document.getElementById('comprehensiveClassFilter').value = '01班';
+                const reference = document.getElementById('comprehensiveClassCompareBatch');
+                reference.value = prior.id;
+                run('comprehensiveBatchBtn','classMarkdown');
+                reference.value = '';
+                run('comprehensiveBatchBtn','singleExamMarkdown');
+                document.getElementById('comprehensiveSubjFilter').value = '物理';
+                document.getElementById('comprehensiveSubjCompareBatch').value = prior.id;
+                run('comprehensiveSubjBtn','subjectMarkdown');
+
+                document.getElementById('progressBaseBatch').value = prior.id;
+                document.getElementById('progressCompareBatch').value = current.id;
+                document.getElementById('progressSubjectFilter').value = '数学';
+                document.getElementById('progressBtn').click();
+                run('progressMarkdownBtn','progressMarkdown');
+                document.getElementById('criticalSubjectFilter').value = '物理';
+                document.getElementById('criticalClassFilter').value = '01班';
+                document.getElementById('criticalLineMode').value = 'manual';
+                document.getElementById('criticalPassLine').value = '95';
+                document.getElementById('criticalAlertBtn').click();
+                run('criticalMarkdownBtn','criticalMarkdown');
+                document.getElementById('corrXSubject').value = '物理';
+                document.getElementById('corrYSubject').value = '历史';
+                document.getElementById('corrGenerateBtn').click();
+                run('corrMarkdownBtn','correlationMarkdown');
                 return result;
             } finally {
                 DataPool.batches = saved.batches;
                 DataPool.currentBatchId = saved.id;
-                refreshSmartTab();
+                combinedStudentData = saved.rows;
+                allSubjectHeaders = saved.headers;
+                refreshComprehensiveTab();
+                switchTab('tab-smart');
             }
         });
         assert.deepEqual(Object.keys(classReport.class),['总分','物理','数学','历史']);
@@ -317,6 +368,17 @@ const merges = [{s:{r:0,c:2},e:{r:0,c:3}},{s:{r:0,c:4},e:{r:0,c:5}}];
         assert.equal(classReport.declineColor,'rgb(153, 27, 27)');
         assert.deepEqual(classReport.declineMissing,['本次缺少年级排名数据']);
         assert.ok(classReport.noCompare && classReport.noDeclineWithoutCompare);
+        assert.match(classReport.classMarkdown, /班内各科及总分前十[\s\S]+第10名 榜单学生09 491分；第10名 榜单学生10 491分/);
+        assert.match(classReport.classMarkdown, /年级第3名/);
+        assert.match(classReport.classMarkdown, /数学 \| 12 \| 榜单学生03 13 → 5（↑8）/);
+        assert.match(classReport.classMarkdown, /榜单学生11 12 → 63（↓51）/);
+        assert.match(classReport.classMarkdown, /榜单学生00（C→B）/);
+        assert.doesNotMatch(classReport.singleExamMarkdown, /### 年级名次进步前十/);
+        assert.match(classReport.subjectMarkdown, /选择题答案分布[\s\S]+A：1人、B：11人/);
+        assert.match(classReport.progressMarkdown, /# 进退步量化诊断[\s\S]+榜单对照 → 榜单本次[\s\S]+榜单学生03/);
+        assert.match(classReport.criticalMarkdown, /# 临界生预警诊断[\s\S]+各次考试预警线/);
+        assert.match(classReport.correlationMarkdown, /# 学科关联诊断[\s\S]+物理名次 \| 历史名次/);
+
         await page.click('[data-tab="tab-collective"]');
         await page.selectOption('#collectiveSubjectFilter','物理'); await page.waitForTimeout(160);
         assert.ok(await page.evaluate(()=>document.getElementById('collectiveHeatmapChart').querySelector('svg')),'heatmap must draw');

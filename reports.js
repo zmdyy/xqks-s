@@ -861,6 +861,126 @@ function getComprehensivePrintContext(mode) {
     return '';
 }
 
+function diagnosisMarkdownTable(headers, rows, emptyMessage = '暂无可用数据') {
+    if (!rows.length) return emptyMessage;
+    const cell = value => String(value ?? '—').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+    const row = values => '| ' + values.map(cell).join(' | ') + ' |';
+    return [row(headers), row(headers.map(() => '---')), ...rows.map(row)].join('\n');
+}
+
+function showComprehensiveMarkdown(report, mode) {
+    const content = document.getElementById('comprehensiveDataContent');
+    content.textContent = report;
+    content.dataset.mode = mode;
+    document.getElementById('comprehensiveCopyStatus').textContent = '';
+    for (const id of ['progressOutput','criticalOutput','corrOutput','comprehensivePlaceholder']) {
+        document.getElementById(id).style.display = 'none';
+    }
+    hideStudentReadableReport();
+    hideComprehensiveReadableReport();
+    document.getElementById('comprehensiveOutput').style.display = 'block';
+}
+
+function buildClassDiagnosisSections(className, students, compareBatch) {
+    const batch = DataPool.getCurrentBatch();
+    const columns = getClassDiffTopTenSubjects(combinedStudentData, allSubjectHeaders, true);
+    const boards = buildClassReportLeaderboards(students, combinedStudentData, batch, compareBatch, columns);
+    const leaders = entry => '第' + entry.rank + '名 ' + getStudentDisplayName(entry.student) + ' ' + entry.score + '分'
+        + (entry.gradeRank > 0 && entry.gradeRank <= 10 ? '（年级第' + entry.gradeRank + '名）' : '');
+    const rows = getClassSubjectRankRowsForReport(className, compareBatch);
+    const average = value => Number.isFinite(value) ? value.toFixed(1) : '—';
+    const lines = ['## 班内各科及总分前十', '',
+        diagnosisMarkdownTable(['科目','学生、班内名次与分数'], boards.map(board => [
+            board.label, board.entries.map(leaders).join('；') || '暂无有效成绩'
+        ])), '', '## 班级均分及排名', ''];
+    lines.push(compareBatch
+        ? diagnosisMarkdownTable(['科目','对照均分','对照班级名次','本次均分','本次班级名次','班级名次变化'],
+            rows.map(row => [row.subject, average(row.compareAvg), row.compareRank, average(row.currentAvg),
+                row.currentRank, formatClassRankChange(row.rankChange).text]))
+        : diagnosisMarkdownTable(['科目','本次均分','本次班级名次'],
+            rows.map(row => [row.subject, average(row.currentAvg), row.currentRank])), '');
+    if (!compareBatch) return lines.concat('本次仅分析单个批次，选择对照批次后可查看名次变化和等级流转。', '');
+
+    lines.push('## 年级名次进退步', '', '批次顺序：' + compareBatch.label + ' → ' + (batch?.label || '当前批次'), '');
+    for (const [key, title, arrow, empty] of [
+        ['improved','年级名次进步前十','↑','本班无人进步'],
+        ['declined','年级名次退步前十','↓','本班无人退步']
+    ]) {
+        lines.push('### ' + title, '', diagnosisMarkdownTable(['科目','有效对照人数','姓名与年级名次变化'], boards.map(board => [
+            board.label, board.comparable.length,
+            board[key].map(entry => entry.name + ' ' + entry.compareRank + ' → ' + entry.curRank + '（' + arrow + Math.abs(entry.change) + '）')
+                .join('；') || board.unavailableMessage || empty
+        ])), '');
+    }
+    const flows = columns.filter(column => column.keys.length).map(column => {
+        const subject = column.keys[0];
+        const gradeRows = students.map(student => ({
+            name:getStudentDisplayName(student), rawName:student.name, className:student.class,
+            grade:AppCore.grade(getSubjectDataByAlias(student, subject)?.grade)
+        }));
+        const referenceSubject = column.label === '总分'
+            ? getTotalSubjectName(compareBatch.allSubjectHeaders, compareBatch.combinedStudentData) || subject
+            : subject;
+        const flow = getSubjectGradeFlowForReport(gradeRows, referenceSubject, compareBatch.id);
+        return [column.label, ...[flow.upNames, flow.downNames, flow.stableNames, flow.noneNames]
+            .map(names => names.join('、') || '—')];
+    });
+    lines.push('## 各科等级流转', '', diagnosisMarkdownTable(['科目','升级','降级','等级相同','无可对照等级'], flows), '');
+    return lines;
+}
+
+function formatProgressDiagnosis(data) {
+    const number = (value, digits = 1) => Number.isFinite(value) ? value.toFixed(digits) : '—';
+    return ['# 进退步量化诊断', '',
+        '对照 → 本次：' + data.baseBatch.label + ' → ' + data.cmpBatch.label,
+        '范围：' + (data.className || '全部班级') + ' · ' + data.subjectDisplay,
+        '名次按各批次的有效分数排序。名次变化为正表示进步，负表示退步。', '',
+        '## 班级统计', '', diagnosisMarkdownTable(['班级','可比人数','分数升/降/平','名次升/降/平','平均分差','平均名次变化'],
+            data.classStats.map(row => [row.className,row.total,
+                [row.improved,row.declined,row.stable].join('/'),[row.rankImproved,row.rankDeclined,row.rankStable].join('/'),
+                number(row.avgDiff,2),number(row.avgRankDiff)])), '',
+        '## 学生明细', '', diagnosisMarkdownTable(['班级','姓名','对照分数','本次分数','分差','对照名次','本次名次','名次变化'],
+            data.results.map(row => [row.className,row.name,number(row.baseScore),number(row.cmpScore),number(row.diff),
+                row.baseRank,row.cmpRank,row.rankDiff]))
+    ].join('\n');
+}
+
+function formatCriticalDiagnosis(data) {
+    const number = value => Number.isFinite(value) ? value.toFixed(1) : '—';
+    const exams = data.exams.slice().reverse();
+    const lines = ['# 临界生预警诊断', '', '范围：' + data.className + ' · ' + data.subject + ' · 临界带 ±' + data.range + ' 分', '',
+        '## 各次考试预警线', '', diagnosisMarkdownTable(['考试','分数线','口径'],
+            exams.length ? exams.map(exam => [exam.label,number(exam.line),exam.hint || '—'])
+                : [['当前数据',number(data.passLine),data.lineSource || '—']]), ''];
+    if (data.multi) {
+        lines.push('## 预警分类', '', diagnosisMarkdownTable(['类别','人数','学生'],
+            CRITICAL_CATEGORY_ORDER.map(key => [CRITICAL_CATEGORY_META[key].label, data.groups[key].length,
+                data.groups[key].map(row => row.name).join('、') || '—'])), '',
+            '## 临界生历次表现', '', diagnosisMarkdownTable(['姓名','类别', ...exams.map(exam => exam.label + '（得分 / 差距 / 状态）')],
+                data.students.map(row => [row.name,row.categoryLabel,...row.points.slice().reverse().map(point =>
+                    Number.isFinite(point.score) ? [number(point.score),number(point.diff),getCriticalZoneLabel(point.zone)].join(' / ') : '缺失'
+                )]), '本次没有符合条件的临界生。'));
+    } else {
+        lines.push('## 临界生名单', '', diagnosisMarkdownTable(['姓名','得分','距预警线','状态'],
+            data.students.map(row => [row.name,number(row.score),number(row.diff),row.status]),
+            Number.isFinite(data.passLine) ? '本次没有符合条件的临界生。' : '缺少可用分数线，无法判定。'));
+    }
+    return lines.join('\n');
+}
+
+function formatCorrelationDiagnosis(data) {
+    const levels = ['均衡','轻微偏科','严重偏科'];
+    const points = data.points.slice().sort((a,b) => b.absDiff - a.absDiff);
+    return ['# 学科关联诊断', '', '范围：' + (data.className === '__all__' ? '全部班级' : data.className),
+        '两科均有有效年级名次：' + points.length + ' 人',
+        '均衡阈值：' + data.threshold + ' 名',
+        '名次相关系数：' + (data.correlationDefined ? data.r.toFixed(3) : '无法计算（样本或排名差异不足）'), '',
+        '## 偏科分布', '', diagnosisMarkdownTable(['程度','人数'], levels.map(level => [level,points.filter(row => row.level === level).length])), '',
+        '## 学生名次对照', '', diagnosisMarkdownTable(['班级','姓名',data.xSubj + '名次',data.ySubj + '名次','名次差（纵轴 − 横轴）','偏弱科目','程度'],
+            points.map(row => [row.className,row.name,row.x,row.y,row.diff,row.weakSubject,row.level]))
+    ].join('\n');
+}
+
 function renderMarkdownForReadableReport(markdownText) {
     var text = String(markdownText || '');
     if (window.marked && typeof window.marked.parse === 'function') {
@@ -1631,7 +1751,7 @@ function getSubjectItemAverageRates(rows) {
     rows.forEach(function(r) {
         Object.keys(r.subScores || {}).forEach(function(itemName) {
             var item = r.subScores[itemName];
-            if (!item || typeof item !== 'object') return;
+            if (!item || typeof item !== 'object' || item.summaryOf) return;
             var score = parseFloat(item.score), maxScore = parseFloat(item.maxScore);
             if (isNaN(score) || isNaN(maxScore) || maxScore <= 0) return;
             if (!map[itemName]) map[itemName] = { item: itemName, score: 0, max: 0, count: 0 };
@@ -1644,33 +1764,33 @@ function getSubjectItemAverageRates(rows) {
 }
 
 function getSubjectChoiceDistribution(rows) {
-    function normAns(v) { return String(v || '').toUpperCase().replace(/[^A-H]/g, ''); }
-    function isChoice(itemName, ans, correct) {
-        var a = normAns(ans), c = normAns(correct);
-        if (a && /^[A-H]{1,8}$/.test(a)) return true;
-        if (c && /^[A-H]{1,8}$/.test(c)) return true;
-        return /选择|单选|多选|客观/.test(String(itemName || ''));
+    const items = new Map();
+    const parseChoice = raw => {
+        const value = AppCore.text(raw).toUpperCase();
+        if (!/^[A-H](?:[、,;\s]*[A-H]){0,7}$/.test(value)) return '';
+        return [...value.match(/[A-H]/g)].sort().join('');
+    };
+    for (const row of rows) {
+        for (const [name, item] of Object.entries(row.subScores || {})) {
+            if (!item || typeof item !== 'object' || item.summaryOf) continue;
+            const answer = parseChoice(item.studentAnswer);
+            const correct = parseChoice(item.correctAnswer);
+            if (!answer && !correct) continue;
+            if (!items.has(name)) items.set(name, {counts:{}, answers:new Set()});
+            const record = items.get(name);
+            if (correct) record.answers.add(correct);
+            if (answer) record.counts[answer] = (record.counts[answer] || 0) + 1;
+        }
     }
-    var map = {};
-    rows.forEach(function(r) {
-        Object.keys(r.subScores || {}).forEach(function(itemName) {
-            var item = r.subScores[itemName];
-            if (!item || typeof item !== 'object') return;
-            var ans = normAns(item.studentAnswer), correct = normAns(item.correctAnswer);
-            if (!isChoice(itemName, ans, correct)) return;
-            if (!map[itemName]) map[itemName] = { item: itemName, correct: correct, counts: {}, total: 0, wrong: 0 };
-            var key = ans || '空白';
-            map[itemName].counts[key] = (map[itemName].counts[key] || 0) + 1;
-            map[itemName].total++;
-            if (correct && ans !== correct) map[itemName].wrong++;
-            if (!map[itemName].correct && correct) map[itemName].correct = correct;
-        });
-    });
-    return Object.keys(map).map(function(k) {
-        var e = map[k];
-        var wrongChoices = Object.keys(e.counts).filter(function(a){ return a !== e.correct; }).sort(function(a,b){ return e.counts[b] - e.counts[a]; });
-        return { item: e.item, correct: e.correct || '-', counts: e.counts, total: e.total, wrong: e.wrong, wrongRate: e.total ? e.wrong / e.total : 0, topWrong: wrongChoices[0] || '-' };
-    }).sort(function(a,b){ return b.wrongRate - a.wrongRate || b.wrong - a.wrong; });
+    return [...items].map(([item, record]) => {
+        const correct = record.answers.size === 1 ? [...record.answers][0] : '';
+        const total = Object.values(record.counts).reduce((sum,count) => sum + count, 0);
+        const wrong = correct ? total - (record.counts[correct] || 0) : 0;
+        const wrongChoices = correct ? Object.keys(record.counts).filter(answer => answer !== correct)
+            .sort((a,b) => record.counts[b] - record.counts[a]) : [];
+        return {item, correct:correct || '—', counts:record.counts, total, wrong,
+            wrongRate:correct && total ? wrong / total : null, topWrong:wrongChoices[0] || '—'};
+    }).sort((a,b) => (b.wrongRate ?? -1) - (a.wrongRate ?? -1) || b.wrong - a.wrong);
 }
 
 function renderSubjectChoiceDistributionTable(choiceItems) {
@@ -1678,8 +1798,8 @@ function renderSubjectChoiceDistributionTable(choiceItems) {
     var html = '<table class="sr-table"><thead><tr><th>题号</th><th>正确答案</th><th>错选率</th><th>最高错选</th><th>答案分布</th><th>归因提示</th></tr></thead><tbody>';
     choiceItems.slice(0, 12).forEach(function(item) {
         var dist = Object.keys(item.counts).sort().map(function(k){ return k + '(' + item.counts[k] + ')'; }).join(' ');
-        var hint = item.wrongRate >= 0.5 ? '高集中错选，优先讲评选项干扰点' : (item.wrongRate >= 0.3 ? '存在明显干扰项，建议课堂追问' : '整体掌握较好，个别纠错');
-        html += '<tr><td>' + escapeHtml(item.item) + '</td><td>' + escapeHtml(item.correct) + '</td><td>' + Math.round(item.wrongRate * 100) + '%</td><td>' + escapeHtml(item.topWrong) + '</td><td>' + escapeHtml(dist) + '</td><td>' + hint + '</td></tr>';
+        var hint = item.wrongRate == null ? '缺少一致的正确答案或有效作答' : item.wrongRate >= 0.5 ? '高集中错选，优先讲评选项干扰点' : (item.wrongRate >= 0.3 ? '存在明显干扰项，建议课堂追问' : '整体掌握较好，个别纠错');
+        html += '<tr><td>' + escapeHtml(item.item) + '</td><td>' + escapeHtml(item.correct) + '</td><td>' + (item.wrongRate == null ? '—' : Math.round(item.wrongRate * 100) + '%') + '</td><td>' + escapeHtml(item.topWrong) + '</td><td>' + escapeHtml(dist) + '</td><td>' + hint + '</td></tr>';
     });
     html += '</tbody></table>';
     return html;
@@ -1690,11 +1810,14 @@ function getSubjectGradeFlowForReport(rows, subjectName, compareBatchId) {
     if (!compareBatchId) { flow.none = rows.length; flow.noneNames = rows.map(function(r){ return r.name; }); return flow; }
     var cmpBatch = DataPool.batches.find(function(b) { return b.id === compareBatchId; });
     if (!cmpBatch) { flow.none = rows.length; flow.noneNames = rows.map(function(r){ return r.name; }); return flow; }
-    var prevMap = {};
-    cmpBatch.combinedStudentData.forEach(function(s) { prevMap[String(s.name || '').trim() + '||' + normalizeClassName(s.class || '')] = s; });
+    const prevMap = new Map();
+    (cmpBatch.combinedStudentData || []).forEach(function(s) {
+        const key = AppCore.studentKey(s);
+        prevMap.set(key, prevMap.has(key) ? null : s);
+    });
     var order = ['C','C+','B','B+','A','A+'];
     rows.forEach(function(r) {
-        var ps = prevMap[String(r.rawName || '').trim() + '||' + normalizeClassName(r.className || '')];
+        var ps = prevMap.get(AppCore.studentKey({ name:r.rawName, class:r.className }));
         var psd = getSubjectDataByAlias(ps, subjectName);
         var prevGrade = psd ? String(psd.grade || '').trim().toUpperCase() : '';
         var curGrade = r.grade || '';
@@ -3042,7 +3165,7 @@ function buildCorrelationReportData() {
     points.forEach(function(p) { sumX += p.x; sumY += p.y; sumXY += p.x * p.y; sumX2 += p.x * p.x; sumY2 += p.y * p.y; });
     var denom = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
     var r = denom > 0 ? (n * sumXY - sumX * sumY) / denom : 0;
-    return { className: className, xSubj: xSubj, ySubj: ySubj, threshold: balanceThreshold, points: points, r: r };
+    return { className: className, xSubj: xSubj, ySubj: ySubj, threshold: balanceThreshold, points: points, r: r, correlationDefined: denom > 0 };
 }
 
 function renderCorrelationReadableReport() {
@@ -3061,7 +3184,7 @@ function renderCorrelationReadableReport() {
     html.push('<div class="cr-meta"><div><b>范围：</b>' + escapeHtml(data.className === '__all__' ? '全部班级' : data.className) + '</div><div><b>横轴：</b>' + escapeHtml(data.xSubj) + '</div><div><b>纵轴：</b>' + escapeHtml(data.ySubj) + '</div><div><b>均衡阈值：</b>≤' + data.threshold + '名</div></div></div>');
     html.push('<div class="sr-kpis">');
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">参考人数</div><div class="sr-kpi-value">' + data.points.length + '</div></div>');
-    html.push('<div class="sr-kpi"><div class="sr-kpi-label">相关系数 r</div><div class="sr-kpi-value">' + (isNaN(data.r) ? '-' : data.r.toFixed(3)) + '</div></div>');
+    html.push('<div class="sr-kpi"><div class="sr-kpi-label">相关系数 r</div><div class="sr-kpi-value">' + (data.correlationDefined ? data.r.toFixed(3) : '—') + '</div></div>');
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">轻微偏科</div><div class="sr-kpi-value">' + groups['轻微偏科'] + '</div></div>');
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">严重偏科</div><div class="sr-kpi-value">' + groups['严重偏科'] + '</div></div>');
     html.push('</div>');
