@@ -1171,15 +1171,36 @@ function buildClassReportLeaderboards(students, currentData, batch, compareBatch
     });
 }
 
-function renderClassReportProgressTable(rows) {
-    return '<div class="sr-class-leaderboard" data-class-leaderboard="improved"><h4>年级名次进步前十</h4>'
-        + '<table class="sr-table"><thead><tr><th scope="col">科目</th><th scope="col">学生名单</th></tr></thead><tbody>'
-        + rows.map(row => '<tr><th scope="row">' + escapeHtml(row.label) + '</th><td>'
-            + (row.improved.length ? row.improved.map(entry => '<span class="sr-class-leaderboard-entry">'
-                + escapeHtml(entry.name) + '<small>' + entry.compareRank + ' → ' + entry.curRank
-                + '</small><b class="sr-class-leaderboard-gain">↑' + entry.change + '</b></span>').join('')
-                : '<span class="sr-class-leaderboard-empty">' + row.progressMessage + '</span>')
-            + '</td></tr>').join('') + '</tbody></table></div>';
+function renderClassReportProgressTable(columns) {
+    const header = columns.map(column => `<th scope="col">${escapeHtml(column.label)}</th>`).join('');
+    const rowCount = Math.max(1, ...columns.map(column => column.improved.length));
+    const rows = Array.from({ length:rowCount }, (_, index) => {
+        const cells = columns.map(column => {
+            const entry = column.improved[index];
+            if (entry) {
+                return `<td><div class="sr-class-progress-entry">
+                    <span class="sr-class-progress-name">${escapeHtml(entry.name)}</span>
+                    <div class="sr-class-progress-ranks">
+                        <strong class="sr-class-progress-gain">↑${entry.change}</strong>
+                        <small class="sr-class-progress-change">${entry.compareRank} → ${entry.curRank}</small>
+                    </div>
+                </div></td>`;
+            }
+            if (index === 0) return `<td><span class="sr-class-progress-empty">${escapeHtml(column.progressMessage)}</span></td>`;
+            return '<td></td>';
+        }).join('');
+        return `<tr>${cells}</tr>`;
+    }).join('');
+    return `<div class="sr-class-leaderboard" data-class-leaderboard="improved">
+        <h4 id="classReportProgressTitle">年级名次进步前十</h4>
+        <div class="scroll-container class-top-ten-scroll sr-class-top-ten-scroll sr-class-progress-scroll"
+            tabindex="0" role="region" aria-labelledby="classReportProgressTitle">
+            <table class="class-top-ten-table sr-class-progress-table" aria-labelledby="classReportProgressTitle">
+                <thead><tr>${header}</tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    </div>`;
 }
 
 function renderClassReadableReport(className, compareBatchId) {

@@ -314,15 +314,8 @@
         .sr-table tr:nth-child(even) { background:#f8fafc; }
         .sr-class-leaderboard { margin:12px 0; }
         .sr-class-leaderboard h4 { margin:0; color:var(--primary); font-size:14px; }
-        .sr-class-leaderboard th:first-child { width:9em; }
-        .sr-class-leaderboard tbody th { background:#eef3f8; color:var(--primary); }
-        .sr-class-leaderboard tbody td { text-align:left; }
         .sr-class-top-ten-legend { margin:6px 0 9px; font-size:12px; color:var(--text-secondary); }
         .sr-class-top-ten-scroll { border:1px solid #e2e8f0; border-radius:6px; }
-        .sr-class-leaderboard-entry { display:inline-block; margin:2px 12px 2px 0; white-space:nowrap; }
-        .sr-class-leaderboard-entry small { margin:0 4px; color:var(--text-secondary); font-size:.92em; }
-        .sr-class-leaderboard-empty { color:var(--text-secondary); }
-        .sr-class-leaderboard-gain { color:#166534; }
         .sr-pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:800; border:1px solid transparent; white-space:nowrap; }
         .sr-good { background:#dcfce7; color:#166534; border-color:#86efac; }
         .sr-warn { background:#fff7ed; color:#9a3412; border-color:#fdba74; }
@@ -611,6 +604,23 @@
         .class-top-ten-rank { min-width:2ch; }
         .class-top-ten-score { margin-left:auto; }
         .class-top-ten-class { color:var(--text-secondary); font-size:11px; }
+        .sr-class-progress-scroll { margin-top:8px; max-height:none; }
+        .sr-class-progress-table th, .sr-class-progress-table td { min-width:132px; }
+        .sr-class-progress-table td { height:48px; }
+        .sr-class-progress-entry { display:flex; align-items:center; justify-content:space-between; gap:8px; text-align:left; line-height:1.2; }
+        .sr-class-progress-name { font-size:16px; font-weight:700; }
+        .sr-class-progress-ranks { display:grid; justify-items:end; gap:2px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+        .sr-class-progress-gain { color:#166534; font-size:14px; }
+        .sr-class-progress-change { color:var(--text-secondary); font-size:11px; }
+        .sr-class-progress-empty { display:block; max-width:10em; color:var(--text-secondary); font-size:12px; line-height:1.3; text-align:left; white-space:normal; }
+        @media print {
+            .sr-class-progress-scroll .sr-class-progress-table td { height:32px; }
+            .sr-class-progress-table tr { break-inside:avoid; }
+            .sr-class-progress-entry { gap:3px; }
+            .sr-class-progress-name { font-size:10px; overflow-wrap:anywhere; }
+            .sr-class-progress-gain { font-size:9px; }
+            .sr-class-progress-change, .sr-class-progress-empty { font-size:8px; }
+        }
         .analysis-anchor-section { scroll-margin-top:18px; }
         .analysis-anchor-section.analysis-section-pulse { outline:2px solid rgba(28,61,92,.18); outline-offset:3px; border-radius:var(--radius); }
         @media (max-width: 900px) {
