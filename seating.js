@@ -224,7 +224,7 @@ SeatingModule.prototype.buildLayoutHTML = function() {
         '<div class="seating-content-wrapper">' +
             '<div class="seating-main" id="sm-main">' +
                 '<div class="stage">\u8BB2 \u53F0</div>' +
-                '<div class="sm-seat-tools"><button class="btn2 btn2-toggle" id="sm-btnAddSeats">新增位置</button><button class="btn2 btn2-toggle" data-sm-add-row="top" hidden>上方增加整排</button><button class="btn2 btn2-toggle" data-sm-add-row="bottom" hidden>下方增加整排</button><span id="sm-addSeatHint" hidden>点击＋新增；同一排的其他＋可补齐位置。</span></div>' +
+                '<div class="sm-seat-tools"><button class="btn2 btn2-toggle" id="sm-btnAddSeats">新增位置</button><button type="button" class="btn2 btn2-primary" id="sm-btnExportImage" style="margin-left:auto" title="按当前标签显示状态导出完整座位表">高清 PNG</button><button class="btn2 btn2-toggle" data-sm-add-row="top" hidden>上方增加整排</button><button class="btn2 btn2-toggle" data-sm-add-row="bottom" hidden>下方增加整排</button><span id="sm-addSeatHint" hidden>点击＋新增；同一排的其他＋可补齐位置。</span></div>' +
                 '<div class="seat-grid" id="sm-seatGrid"></div>' +
             '</div>' +
             '<div class="seating-bottom">' +
@@ -367,6 +367,8 @@ SeatingModule.prototype.bindEvents = function() {
     var btnClr = this.root.querySelector('#sm-btnClear');
     if (btnClr) btnClr.onclick = function() { self.clearAll(); };
     // Export
+    var btnImage = this.root.querySelector('#sm-btnExportImage');
+    if (btnImage) btnImage.onclick = function() { exportSeatingTableImage(self, btnImage); };
     var btnExp = this.root.querySelector('#sm-btnExport');
     if (btnExp) btnExp.onclick = function() { self.exportData(); };
     var btnHelpGraph = this.root.querySelector('#sm-btnHelpGraph');
@@ -758,6 +760,106 @@ SeatingModule.prototype.renderHistory = function() {
 SeatingModule.prototype.restoreSnapshots = function(snapshots) { this.historySnapshots=snapshots || [];this.currentSnapshotIndex=-1; };
 
 // 导出、统计、标签管理
+function drawSeatingTableImage(module) {
+    const grid=module.root.querySelector('#sm-seatGrid');
+    if (!grid || !module.seatMap.length || !module.seatIds.some(id=>id!=null)) throw new Error('暂无座位表可导出');
+    const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
+    if(!ctx) throw new Error('当前浏览器无法生成图片');
+    const family=getComputedStyle(grid).fontFamily || 'sans-serif';
+    const font=(size,weight=400)=>{ctx.font=weight+' '+size+'px '+family;};
+    const measure=(value,size,weight=400)=>{font(size,weight);return Math.ceil(ctx.measureText(value).width);};
+    const text=(value,x,y,size,weight,color,align='center')=>{
+        font(size,weight);ctx.fillStyle=color;ctx.textBaseline='middle';ctx.textAlign=align;ctx.fillText(value,x,y);
+    };
+    const box=(x,y,w,h,r,fill,stroke,lineWidth=1)=>{
+        ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=fill;ctx.fill();
+        if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lineWidth;ctx.stroke();}
+    };
+    const title=(module.className ? String(module.className)+' · ' : '')+'座位表';
+    const showTags=module.showTags;
+    const domSeats=new Map(Array.from(grid.querySelectorAll('.seat[data-seat-index]'),el=>[Number(el.dataset.seatIndex),el]));
+    let cellW=146;
+    const cells=module.seatMap.map((name,index)=>{
+        if(module.seatIds[index]==null) return null;
+        if(name==='🚫') return {blocked:true};
+        if(!name) return {empty:true};
+        const el=domSeats.get(index),student=module.getStudent(name);
+        const tags=showTags && el ? Array.from(el.querySelectorAll('.tag-display-area > span'),tag=>{
+            const style=getComputedStyle(tag);
+            return {label:tag.textContent.trim(),fill:style.backgroundColor,color:style.color,border:style.borderColor};
+        }).filter(t=>t.label) : [];
+        const display=el?.querySelector('.seat-name')?.textContent || String(name);
+        cellW=Math.max(cellW,measure(display,18,700)+44,...tags.map(tag=>measure(tag.label,12,500)+32));
+        return {name:display,tags,fixed:showTags && student?.status==='fixed',special:showTags && student?.status==='special'};
+    });
+    const rowCount=Math.ceil(cells.length/8),rowHeights=[];
+    for(let r=0;r<rowCount;r++){
+        const maxTags=Math.max(0,...cells.slice(r*8,r*8+8).map(cell=>cell?.tags?.length || 0));
+        rowHeights.push(maxTags ? Math.max(90,48+maxTags*22) : 76);
+    }
+    const pad=24,gap=6,aisle=28,top=132;
+    const gridW=8*cellW+3*aisle+10*gap;
+    const width=Math.max(gridW+2*pad,measure(title,28,700)+2*pad);
+    const height=top+rowHeights.reduce((s,h)=>s+h,0)+Math.max(0,rowCount-1)*gap+pad;
+    const scale=Math.min(4,16384/Math.max(width,height),Math.sqrt(32000000/(width*height)));
+    canvas.width=Math.max(1,Math.floor(width*scale));canvas.height=Math.max(1,Math.floor(height*scale));
+    ctx.scale(canvas.width/width,canvas.height/height);
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,width,height);
+    text(title,width/2,36,28,700,'#193a56');
+    box((width-300)/2,67,300,42,8,'#193a56');
+    text('讲 台',width/2,88,16,700,'#ffffff');
+    let y=top;
+    for(let r=0;r<rowCount;r++){
+        const h=rowHeights[r];let x=(width-gridW)/2;
+        for(let c=0;c<8;c++){
+            if(c===2||c===4||c===6){
+                box(x,y,aisle,h,6,'#e2e8f0');
+                text('走廊',x+aisle/2,y+h/2,10,600,'#64748b');
+                x+=aisle+gap;
+            }
+            const cell=cells[r*8+c];
+            if(cell){
+                const edge=cell.fixed?'#22c55e':cell.special?'#eab308':'#dbe3ee';
+                if(cell.blocked){
+                    ctx.setLineDash([5,4]);box(x,y,cellW,h,7,'#f8fafc','#cbd5e1',1.5);ctx.setLineDash([]);
+                    text('⊘',x+cellW/2,y+h/2-10,20,600,'#94a3b8');
+                    text('空位',x+cellW/2,y+h/2+13,12,400,'#64748b');
+                }else{
+                    box(x,y,cellW,h,7,'#ffffff',edge,cell.fixed||cell.special?2:1);
+                    if(cell.empty) text('空座',x+cellW/2,y+h/2,13,400,'#64748b');
+                    else {
+                        const n=cell.tags.length,contentH=n?30+n*22:24;
+                        const start=y+(h-contentH)/2;
+                        text(cell.name,x+cellW/2,start+12,18,700,'#172b42');
+                        if(cell.fixed) text('📌',x+cellW-12,y+12,12,400,'#e11d48');
+                        cell.tags.forEach((tag,i)=>{
+                            const w=measure(tag.label,12,500)+14,ty=start+30+i*22;
+                            box(x+(cellW-w)/2,ty,w,19,4,tag.fill,tag.border);
+                            text(tag.label,x+cellW/2,ty+9.5,12,500,tag.color);
+                        });
+                    }
+                }
+            }
+            x+=cellW+gap;
+        }
+        y+=h+gap;
+    }
+    return canvas;
+}
+
+async function exportSeatingTableImage(module,button) {
+    if(button.disabled)return;
+    const original=button.textContent;
+    button.disabled=true;button.textContent='导出中…';
+    try{
+        const filename=[module.className || '班级','座位表',module.showTags?'含标签':'简洁版'].join('_').replace(/[\\/:*?"<>|]/g,'_')+'.png';
+        const canvas=drawSeatingTableImage(module);
+        const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('图片生成失败，请重试')),'image/png'));
+        downloadCollectiveHeatmapBlob(blob,filename);
+    }catch(error){await showAlert(error.message || '座位表图片生成失败，请重试');}
+    finally{button.disabled=false;button.textContent=original;}
+}
+
 SeatingModule.prototype.exportData = function() {
     if (!this.students.length) { showAlert('没有学生数据可导出！'); return; }
     var wb = XLSX.utils.book_new();

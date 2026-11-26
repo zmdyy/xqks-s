@@ -52,8 +52,18 @@ const root=path.resolve(__dirname,'..');
         assert.equal(hidden.fixedStatus,'fixed');
         assert.equal(hidden.specialStatus,'special');
         assert.match(hidden.button,/关$/);
+        // Export the currently displayed layout as a real PNG, including every seat row.
+        const checkSeatingDownload=async(expected)=>{
+            const [download]=await Promise.all([page.waitForEvent('download'),page.click('#sm-btnExportImage')]);
+            assert.match(download.suggestedFilename(),expected);
+            const bytes=fs.readFileSync(await download.path());
+            assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+            assert.ok(bytes.readUInt32BE(16)>=3000 && bytes.readUInt32BE(20)>=500);
+        };
+        await checkSeatingDownload(/座位表_简洁版\.png$/);
         await page.click('#sm-btnToggleTags');await settled(page);
         assert.deepEqual(await seatState(),visible);
+        await checkSeatingDownload(/座位表_含标签\.png$/);
         await page.evaluate(()=>{const m=seatingModuleInstance;m.getStudent('一班学生1').status='normal';m.renderGrid()});
         await page.evaluate(()=>{const m=seatingModuleInstance;m.moveStudent('一班学生1',m.seatMap.indexOf('一班学生2'));m.seatMap[15]='🚫';m.saveAndRender('设置禁用空位')});await settled(page);
         const arranged=await page.evaluate(()=>seatingModuleInstance.seatMap.slice());
