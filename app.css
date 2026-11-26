@@ -720,9 +720,9 @@
     #tab-seating .seat.empty-seat:hover{background:#f1f5f9;}
     #tab-seating .seat-name{font-weight:700;font-size:.8rem;text-align:center;line-height:1.3;color:var(--seating-text);margin-bottom:2px;}
     #tab-seating .corridor{
-        background:linear-gradient(180deg,#e2e8f0,#cbd5e1);min-height:72px;margin:0;
+        background:#94a3b8;min-height:72px;margin:0;
         border-radius:var(--seating-radius-sm);display:flex;align-items:center;justify-content:center;
-        color:var(--seating-text3);font-weight:600;font-size:.65rem;text-transform:uppercase;letter-spacing:1px;
+        color:#ffffff;font-weight:600;font-size:.65rem;text-transform:uppercase;letter-spacing:1px;
     }
     #tab-seating .corridor-label{user-select:none;pointer-events:none;line-height:1;}
     #tab-seating .tag-display-area{display:flex;flex-direction:column;gap:2px;justify-content:center;align-items:center;margin-top:2px;pointer-events:none;width:100%;max-width:100%;overflow:hidden;}

@@ -814,8 +814,8 @@ function drawSeatingTableImage(module) {
         const h=rowHeights[r];let x=(width-gridW)/2;
         for(let c=0;c<8;c++){
             if(c===2||c===4||c===6){
-                box(x,y,aisle,h,6,'#e2e8f0');
-                text('走廊',x+aisle/2,y+h/2,10,600,'#64748b');
+                box(x,y,aisle,h,6,'#94a3b8');
+                text('走廊',x+aisle/2,y+h/2,10,600,'#ffffff');
                 x+=aisle+gap;
             }
             const cell=cells[r*8+c];
