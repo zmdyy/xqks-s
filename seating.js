@@ -766,7 +766,8 @@ function drawSeatingTableImage(module) {
     const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
     if(!ctx) throw new Error('当前浏览器无法生成图片');
     const family=getComputedStyle(grid).fontFamily || 'sans-serif';
-    const font=(size,weight=400)=>{ctx.font=weight+' '+size+'px '+family;};
+    const fontScale=1.3;
+    const font=(size,weight=400)=>{ctx.font=weight+' '+(size*fontScale)+'px '+family;};
     const measure=(value,size,weight=400)=>{font(size,weight);return Math.ceil(ctx.measureText(value).width);};
     const text=(value,x,y,size,weight,color,align='center')=>{
         font(size,weight);ctx.fillStyle=color;ctx.textBaseline='middle';ctx.textAlign=align;ctx.fillText(value,x,y);
@@ -795,9 +796,9 @@ function drawSeatingTableImage(module) {
     const rowCount=Math.ceil(cells.length/8),rowHeights=[];
     for(let r=0;r<rowCount;r++){
         const maxTags=Math.max(0,...cells.slice(r*8,r*8+8).map(cell=>cell?.tags?.length || 0));
-        rowHeights.push(maxTags ? Math.max(90,48+maxTags*22) : 76);
+        rowHeights.push(maxTags ? Math.max(98,56+maxTags*28) : 76);
     }
-    const pad=24,gap=6,aisle=28,top=132;
+    const pad=24,gap=6,aisle=36,top=132;
     const gridW=8*cellW+3*aisle+10*gap;
     const width=Math.max(gridW+2*pad,measure(title,28,700)+2*pad);
     const height=top+rowHeights.reduce((s,h)=>s+h,0)+Math.max(0,rowCount-1)*gap+pad;
@@ -822,20 +823,20 @@ function drawSeatingTableImage(module) {
                 const edge=cell.fixed?'#22c55e':cell.special?'#eab308':'#dbe3ee';
                 if(cell.blocked){
                     ctx.setLineDash([5,4]);box(x,y,cellW,h,7,'#f8fafc','#cbd5e1',1.5);ctx.setLineDash([]);
-                    text('⊘',x+cellW/2,y+h/2-10,20,600,'#94a3b8');
-                    text('空位',x+cellW/2,y+h/2+13,12,400,'#64748b');
+                    text('⊘',x+cellW/2,y+h/2-15,20,600,'#94a3b8');
+                    text('空位',x+cellW/2,y+h/2+16,12,400,'#64748b');
                 }else{
                     box(x,y,cellW,h,7,'#ffffff',edge,cell.fixed||cell.special?2:1);
                     if(cell.empty) text('空座',x+cellW/2,y+h/2,13,400,'#64748b');
                     else {
-                        const n=cell.tags.length,contentH=n?30+n*22:24;
+                        const n=cell.tags.length,contentH=n?36+n*28:30;
                         const start=y+(h-contentH)/2;
-                        text(cell.name,x+cellW/2,start+12,18,700,'#172b42');
-                        if(cell.fixed) text('📌',x+cellW-12,y+12,12,400,'#e11d48');
+                        text(cell.name,x+cellW/2,start+15,18,700,'#172b42');
+                        if(cell.fixed) text('📌',x+cellW-14,y+14,12,400,'#e11d48');
                         cell.tags.forEach((tag,i)=>{
-                            const w=measure(tag.label,12,500)+14,ty=start+30+i*22;
-                            box(x+(cellW-w)/2,ty,w,19,4,tag.fill,tag.border);
-                            text(tag.label,x+cellW/2,ty+9.5,12,500,tag.color);
+                            const w=measure(tag.label,12,500)+14,ty=start+36+i*28;
+                            box(x+(cellW-w)/2,ty,w,25,4,tag.fill,tag.border);
+                            text(tag.label,x+cellW/2,ty+12.5,12,500,tag.color);
                         });
                     }
                 }
