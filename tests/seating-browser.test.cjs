@@ -28,6 +28,33 @@ const root=path.resolve(__dirname,'..');
         await page.evaluate(()=>seatingModuleInstance.openModal('一班学生0'));
         await page.click('[data-sm-status="fixed"]');await settled(page);await page.click('[data-sm-tag="自律"]');await settled(page);await page.click('#sm-btnCloseModal');
         const fixedIndex=await page.evaluate(()=>seatingModuleInstance.seatMap.indexOf('一班学生0'));
+        // Hiding tags must hide both visual status borders and lock icons, without unlocking students.
+        await page.evaluate(()=>{const m=seatingModuleInstance;m.getStudent('一班学生1').status='special';m.renderGrid()});
+        const seatState=()=>page.evaluate(()=>{
+            const m=seatingModuleInstance;
+            const find=name=>m.root.querySelector('[data-seat-index="'+m.seatMap.indexOf(name)+'"]');
+            const fixed=find('一班学生0'),special=find('一班学生1');
+            return {showTags:m.showTags,fixedBorder:fixed.style.border,specialBorder:special.style.border,
+                pin:!!fixed.querySelector('.seat-locked'),draggable:fixed.draggable,
+                fixedStatus:m.getStudent('一班学生0').status,specialStatus:m.getStudent('一班学生1').status,
+                tags:fixed.querySelector('.tag-display-area').textContent,button:m.root.querySelector('#sm-btnToggleTags').textContent};
+        });
+        const visible=await seatState();
+        assert.ok(visible.pin && visible.fixedBorder && visible.specialBorder && visible.tags);
+        await page.click('#sm-btnToggleTags');await settled(page);
+        const hidden=await seatState();
+        assert.equal(hidden.showTags,false);
+        assert.equal(hidden.pin,false);
+        assert.equal(hidden.fixedBorder,'');
+        assert.equal(hidden.specialBorder,'');
+        assert.equal(hidden.tags,'');
+        assert.equal(hidden.draggable,false);
+        assert.equal(hidden.fixedStatus,'fixed');
+        assert.equal(hidden.specialStatus,'special');
+        assert.match(hidden.button,/关$/);
+        await page.click('#sm-btnToggleTags');await settled(page);
+        assert.deepEqual(await seatState(),visible);
+        await page.evaluate(()=>{const m=seatingModuleInstance;m.getStudent('一班学生1').status='normal';m.renderGrid()});
         await page.evaluate(()=>{const m=seatingModuleInstance;m.moveStudent('一班学生1',m.seatMap.indexOf('一班学生2'));m.seatMap[15]='🚫';m.saveAndRender('设置禁用空位')});await settled(page);
         const arranged=await page.evaluate(()=>seatingModuleInstance.seatMap.slice());
         // Current scores update, while the same class keeps its manual work.

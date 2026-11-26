@@ -466,6 +466,11 @@ SeatingModule.prototype.renderGrid = function() {
     var grid = this.root.querySelector('#sm-seatGrid');
     if (!grid) return;
     grid.className = 'seat-grid' + (this.showTags ? '' : ' tag-hidden');
+    var tagButton = this.root.querySelector('#sm-btnToggleTags');
+    if (tagButton) {
+        tagButton.textContent = '\u{1F4CB} 标签：' + (this.showTags ? '开' : '关');
+        tagButton.setAttribute('aria-pressed', String(this.showTags));
+    }
     grid.innerHTML = '';
     var self = this;
     var addButton=this.root.querySelector('#sm-btnAddSeats');if(addButton){addButton.textContent=this.addingSeats?'完成':'新增位置';addButton.setAttribute('aria-pressed',String(this.addingSeats));}
@@ -505,8 +510,8 @@ SeatingModule.prototype.renderGrid = function() {
                 }; }(idx);
                 var s = this.students.find(function(x) { return x.name === name; });
                 if (s) {
-                    if (s.status === 'fixed') seat.style.border = '2px solid var(--seating-fixed-green)';
-                    if (s.status === 'special') seat.style.border = '2px solid var(--seating-special-yellow)';
+                    if (this.showTags && s.status === 'fixed') seat.style.border = '2px solid var(--seating-fixed-green)';
+                    if (this.showTags && s.status === 'special') seat.style.border = '2px solid var(--seating-special-yellow)';
                     var tagsHtml = '';
                     if (this.showTags) {
                         var g = s.gradient || 0;
@@ -528,7 +533,7 @@ SeatingModule.prototype.renderGrid = function() {
                             tagsHtml += '<span class="' + cls + '">' + t + '</span>';
                         });
                     }
-                    seat.innerHTML = '<div class="seat-name">' + s.name + '</div><div class="tag-display-area">' + tagsHtml + '</div>' + (s.status === 'fixed' ? '<div class="seat-locked">\u{1F4CC}</div>' : '');
+                    seat.innerHTML = '<div class="seat-name">' + s.name + '</div><div class="tag-display-area">' + tagsHtml + '</div>' + (this.showTags && s.status === 'fixed' ? '<div class="seat-locked">\u{1F4CC}</div>' : '');
                     seat.onclick = function(n) { return function() { self.openModal(n); }; }(s.name);
                 }
             } else {
