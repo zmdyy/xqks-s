@@ -314,6 +314,8 @@
         .sr-table tr:nth-child(even) { background:#f8fafc; }
         .sr-class-leaderboard { margin:12px 0; }
         .sr-class-leaderboard h4 { margin:0; color:var(--primary); font-size:14px; }
+        .sr-class-leaderboard-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        @media print { .sr-class-leaderboard-export { display:none !important; } }
         .sr-class-top-ten-legend { margin:6px 0 9px; font-size:12px; color:var(--text-secondary); }
         .sr-class-top-ten-scroll { border:1px solid #e2e8f0; border-radius:6px; }
         .sr-pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:800; border:1px solid transparent; white-space:nowrap; }

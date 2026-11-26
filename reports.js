@@ -1295,6 +1295,132 @@ function buildClassReportLeaderboards(students, currentData, batch, compareBatch
     });
 }
 
+function renderClassLeaderboardHeading(id,title) {
+    return `<div class="sr-class-leaderboard-heading"><h4 id="${id}">${title}</h4><button type="button" class="class-top-ten-export sr-class-leaderboard-export" title="导出完整榜单高清 PNG（不受滚动范围限制）" aria-label="导出${title}高清PNG" onclick="exportClassReportLeaderboard(this)">高清 PNG</button></div>`;
+}
+
+function drawClassReportLeaderboard(table, title, caption, legend, kind) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('当前浏览器无法生成图片');
+    const family = getComputedStyle(table).fontFamily || 'sans-serif';
+    const font = (size, weight) => { ctx.font = `${weight} ${size}px ${family}`; };
+    const measure = (value, size, weight = 400) => { font(size, weight); return Math.ceil(ctx.measureText(value).width); };
+    const txt = (value, x, y, size, weight, color, align = 'left') => {
+        font(size, weight); ctx.fillStyle = color; ctx.textAlign = align;
+        ctx.textBaseline = 'middle'; ctx.fillText(value, x, y);
+    };
+    const rect = (x,y,w,h,color) => { ctx.fillStyle = color; ctx.fillRect(x,y,w,h); };
+    const headers = Array.from(table.tHead.rows[0].cells, cell => cell.textContent.trim());
+    if (!headers.length) throw new Error('暂无可导出的榜单');
+    const progress = kind === 'improved' || kind === 'declined';
+    const pad = 12, gap = 8, margin = 24;
+    const widths = headers.map(label => Math.max(progress ? 150 : 118, measure(label,14,700) + 2*pad));
+    const read = (cell, selector) => cell.querySelector(selector)?.textContent.trim() || '';
+    const rows = Array.from(table.tBodies[0].rows, row => {
+        if (row.cells.length === 1 && row.cells[0].colSpan === headers.length &&
+            !row.cells[0].querySelector('.class-top-ten-entry, .sr-class-progress-entry')) {
+            return {message:row.cells[0].textContent.trim()};
+        }
+        return {cells:Array.from(row.cells, (cell,i) => {
+            const name = read(cell, progress ? '.sr-class-progress-name' : '.class-top-ten-name');
+            const tie = read(cell, '.class-top-ten-tie');
+            const gold = !!cell.querySelector('.class-top-ten-name.class-top-ten-grade-top');
+            const delta = read(cell,'.sr-class-progress-delta');
+            const change = read(cell,'.sr-class-progress-change');
+            const empty = read(cell,'.sr-class-progress-empty');
+            const nameWidth = name ? measure(name,progress ? 16 : 14,700) + (gold ? 8 : 0) : 0;
+            const tieWidth = tie ? measure(tie,11) + 8 : 0;
+            const rightWidth = progress ? Math.max(measure(delta,14,700),measure(change,11)) : tieWidth;
+            widths[i] = Math.max(widths[i],2*pad+nameWidth+(rightWidth ? gap+rightWidth : 0),2*pad+measure(empty,12));
+            return {name,tie,gold,delta,change,empty,nameWidth,tieWidth};
+        })};
+    });
+    const tableWidth = widths.reduce((sum,w)=>sum+w,0);
+    const width = Math.ceil(Math.max(tableWidth,measure(title,24,700),measure(caption,13),measure(legend,12),...rows.map(r=>r.message ? measure(r.message,14)+2*pad : 0))+2*margin);
+    const top = legend ? 104 : 82;
+    const headerHeight = 40, rowHeight = progress ? 52 : 38;
+    const height = top+headerHeight+Math.max(rows.length,1)*rowHeight+margin;
+    // Prefer 4x export; bound pixel count for unusually wide or long tables.
+    const scale = Math.min(4,16384/Math.max(width,height),Math.sqrt(32000000/(width*height)));
+    canvas.width = Math.max(1,Math.floor(width*scale));
+    canvas.height = Math.max(1,Math.floor(height*scale));
+    ctx.scale(canvas.width/width,canvas.height/height);
+    rect(0,0,width,height,'#ffffff');
+    txt(title,margin,32,24,700,'#193a56');
+    txt(caption,margin,61,13,400,'#53677c');
+    if (legend) txt(legend,margin,83,12,400,'#795510');
+    let x = margin;
+    headers.forEach((label,i)=>{
+        rect(x,top,widths[i],headerHeight,i===0?'#193a56':'#2b4e6b');
+        txt(label,x+widths[i]/2,top+headerHeight/2,14,700,'#ffffff','center');
+        x += widths[i];
+    });
+    rows.forEach((row,j)=>{
+        const y=top+headerHeight+j*rowHeight, cy=y+rowHeight/2;
+        const bg=j%2?'#f8fafc':'#ffffff';
+        if (row.message) {
+            rect(margin,y,tableWidth,rowHeight,bg);
+            txt(row.message,margin+pad,cy,14,400,'#53677c');
+            rect(margin,y+rowHeight-1,tableWidth,1,'#e9eef3');
+            return;
+        }
+        let x=margin;
+        row.cells.forEach((cell,i)=>{
+            const w=widths[i];
+            rect(x,y,w,rowHeight,bg);
+            rect(x+w-1,y,1,rowHeight,'#e9eef3');
+            rect(x,y+rowHeight-1,w,1,'#e9eef3');
+            if(cell.empty) txt(cell.empty,x+pad,cy,12,400,'#53677c');
+            if(cell.name){
+                if(cell.gold) rect(x+pad,cy-11,cell.nameWidth,22,'#ffe4a0');
+                txt(cell.name,x+pad+(cell.gold?4:0),cy,progress?16:14,700,cell.gold?'#563600':'#1a1a2e');
+                if(cell.tie){
+                    const tx=x+pad+cell.nameWidth+gap;
+                    rect(tx,cy-9,cell.tieWidth,18,'#edf3f9');
+                    txt(cell.tie,tx+4,cy,11,400,'#53677c');
+                }
+                if(progress){
+                    txt(cell.delta,x+w-pad,cy-9,14,700,kind==='declined'?'#991b1b':'#166534','right');
+                    txt(cell.change,x+w-pad,cy+10,11,400,'#53677c','right');
+                }
+            }
+            x+=w;
+        });
+    });
+    return canvas;
+}
+
+async function exportClassReportLeaderboard(button) {
+    if (button.disabled) return;
+    const board = button.closest('.sr-class-leaderboard');
+    const table = board?.querySelector('table');
+    if (!table?.tHead?.rows.length || !table.tBodies[0]) {
+        await showAlert('暂无可导出的榜单');
+        return;
+    }
+    const title = board.querySelector('h4').textContent.trim();
+    const meta = Array.from(board.closest('.comp-readable-report').querySelectorAll('.cr-meta > div'))
+        .map(el=>el.textContent.trim()).filter(t=>!t.startsWith('生成时间'));
+    const caption = meta.join(' · ');
+    const legend = board.querySelector('.sr-class-top-ten-legend')?.textContent.trim() || '';
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = '导出中…';
+    try {
+        if (document.fonts?.ready) await document.fonts.ready;
+        const canvas = drawClassReportLeaderboard(table,title,caption,legend,board.dataset.classLeaderboard);
+        const blob = await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('图片生成失败，请重试')),'image/png'));
+        const filename = [title,...meta].map(s=>s.replace(/[\\/:*?"<>|：]/g,'_').slice(0,60)).join('_')+'.png';
+        downloadCollectiveHeatmapBlob(blob,filename);
+    } catch (error) {
+        await showAlert(error.message || '图片生成失败，请重试');
+    } finally {
+        button.disabled = false;
+        button.textContent = original;
+    }
+}
+
 function renderClassReportRankChangeTable(columns, kind) {
     const declining = kind === 'declined';
     const title = declining ? '年级名次退步前十' : '年级名次进步前十';
@@ -1321,7 +1447,7 @@ function renderClassReportRankChangeTable(columns, kind) {
         return `<tr>${cells}</tr>`;
     }).join('');
     return `<div class="sr-class-leaderboard" data-class-leaderboard="${kind}">
-        <h4 id="${titleId}">${title}</h4>
+        ${renderClassLeaderboardHeading(titleId, title)}
         <div class="scroll-container class-top-ten-scroll sr-class-top-ten-scroll sr-class-progress-scroll"
             tabindex="0" role="region" aria-labelledby="${titleId}">
             <table class="class-top-ten-table sr-class-progress-table" aria-labelledby="${titleId}">
@@ -1368,7 +1494,7 @@ function renderClassReadableReport(className, compareBatchId) {
     html.push('<div class="sr-kpi"><div class="sr-kpi-label">' + (hasCompare ? '可对照人数' : '均分排名项目') + '</div><div class="sr-kpi-value">' + (hasCompare ? progressRows.length : subjectRankRows.filter(function(r){ return r.currentRank != null; }).length) + '</div></div>');
     html.push('</div>');
     html.push('<div class="sr-section"><h3>一、学生榜单</h3>');
-    html.push('<div class="sr-class-leaderboard"><h4 id="classReportTopTenTitle">班内各科前十</h4>');
+    html.push('<div class="sr-class-leaderboard">' + renderClassLeaderboardHeading('classReportTopTenTitle', '班内各科前十'));
     html.push('<p class="sr-class-top-ten-legend"><span class="class-top-ten-grade-top">金色姓名</span>表示年级前十。</p>');
     html.push('<div class="scroll-container class-top-ten-scroll sr-class-top-ten-scroll" tabindex="0" role="region" aria-labelledby="classReportTopTenTitle">');
     html.push('<table class="class-top-ten-table" id="classReportTopTenTable" aria-labelledby="classReportTopTenTitle"><thead></thead><tbody></tbody></table></div></div>');
