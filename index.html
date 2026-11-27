@@ -9,7 +9,7 @@
     <link rel="preload" href="seating.js?v=report-image-actions" as="script">
     <link rel="preload" href="seating-data.js" as="script">
     <link rel="preload" href="seating-engine.js" as="script">
-    <link rel="stylesheet" href="app.css?v=report-image-actions">
+    <link rel="stylesheet" href="app.css?v=trend-copy-toggle">
     <script src="app-core.js?v=report-image-actions"></script>
     <script src="workspace-manager.js?v=workspace-entry"></script>
     <script src="echarts.min.js"></script>
@@ -579,6 +579,7 @@
         <div class="top-controls">
             <div class="top-title" style="font-size:16px;font-weight:bold;">成绩趋势分析</div>
             <div class="export-buttons">
+                <button type="button" class="image-action-btn" id="trendCopyToggle" aria-label="显示图表复制按钮" aria-pressed="false">复制：关</button>
                 <button class="upload-btn small" id="trendEditOrderBtn">编辑考试名称与顺序</button>
                 <button class="upload-btn small" id="trendPrintBtn" style="background:#2ecc71;">打印当前学生</button>
                 <button class="upload-btn small" id="trendBatchPrintBtn" style="background:#e67e22;">批量打印全部</button>
@@ -8808,6 +8809,12 @@ document.getElementById('classDiffMeanCompSubject').addEventListener('change', f
 });
 
 // Trend analysis
+document.getElementById('trendCopyToggle').addEventListener('click', function() {
+    const enabled = this.getAttribute('aria-pressed') !== 'true';
+    document.getElementById('tab-trend').classList.toggle('trend-copy-enabled', enabled);
+    this.setAttribute('aria-pressed', String(enabled));
+    this.textContent = enabled ? '复制：开' : '复制：关';
+});
 document.getElementById('trendDisplayMode').addEventListener('change', () => { if (DataPool.trendParsedSheets) { trendDisplayMode = document.getElementById('trendDisplayMode').value; updateTrendDisplay(); } });
 
 // Trend chart customization controls
