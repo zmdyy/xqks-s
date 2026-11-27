@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>学情可视化展板</title>
     <link rel="preload" href="reports.js?v=class-leaderboard-png" as="script">
-    <link rel="preload" href="class-comparison.js?v=rank-chart-png-slide-size" as="script">
+    <link rel="preload" href="class-comparison.js?v=rank-chart-png-only" as="script">
     <link rel="preload" href="seating.js?v=seating-corridor-color" as="script">
     <link rel="preload" href="seating-data.js" as="script">
     <link rel="preload" href="seating-engine.js" as="script">
@@ -274,7 +274,7 @@
             </div>
             <div class="distribution-chart-container" style="flex:2;min-height:400px;min-width:400px;">
                 <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px;">
-                    <button type="button" class="filter-btn" id="classDiffRankCopyPng" title="复制适合幻灯片粘贴尺寸的 PNG 柱状图" disabled>复制 PNG</button>
+                    <button type="button" class="filter-btn" id="classDiffRankCopyPng" title="以高清 PNG 格式复制当前柱状图" disabled>复制 PNG</button>
                 </div>
                 <div id="classDiffDistributionChart" style="width:100%;height:400px;"></div>
             </div>
@@ -1141,7 +1141,7 @@
 </div>
 
 <script src="reports.js?v=class-leaderboard-png"></script>
-<script src="class-comparison.js?v=rank-chart-png-slide-size"></script>
+<script src="class-comparison.js?v=rank-chart-png-only"></script>
 <script src="seating-data.js"></script>
 <script src="seating-engine.js"></script>
 <script src="seating.js?v=seating-corridor-color"></script>
