@@ -545,35 +545,41 @@ function buildHeatmapReportSvg(subjectName, selectedClass, buckets, total) {
     return parts.join('');
 }
 
-function downloadHeatmapReportImage(svgText, fileName, scale = 2) {
-    if (!svgText) return;
+async function renderClassDiffSvgPng(svgText, scale) {
     const image = new Image();
     const url = URL.createObjectURL(new Blob([svgText], {type:'image/svg+xml;charset=utf-8'}));
-    image.onload = function() {
-        try {
-            const canvas = document.createElement('canvas');
-            canvas.width = image.naturalWidth * scale;
-            canvas.height = image.naturalHeight * scale;
-            const context = canvas.getContext('2d');
-            if (!context) throw new Error('当前浏览器无法生成图片');
-            context.fillStyle = '#ffffff';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            context.drawImage(image, 0, 0, canvas.width, canvas.height);
-            canvas.toBlob(function(blob) {
-                if (blob) downloadCollectiveHeatmapBlob(blob, fileName);
-                else showAlert('图片生成失败，请重试');
+    try {
+        await new Promise((resolve, reject) => {
+            image.onload = resolve;
+            image.onerror = () => reject(new Error('图像转换失败，请重试'));
+            image.src = url;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth * scale;
+        canvas.height = image.naturalHeight * scale;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('当前浏览器无法生成图片');
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        return await new Promise((resolve, reject) => {
+            canvas.toBlob(blob => {
+                if (blob) resolve(blob);
+                else reject(new Error('图片生成失败，请重试'));
             }, 'image/png');
-        } catch (error) {
-            showAlert(error.message || '图片生成失败，请重试');
-        } finally {
-            URL.revokeObjectURL(url);
-        }
-    };
-    image.onerror = function() {
+        });
+    } finally {
         URL.revokeObjectURL(url);
-        showAlert('名单图生成失败，请重试');
-    };
-    image.src = url;
+    }
+}
+
+async function downloadHeatmapReportImage(svgText, fileName, scale = 2) {
+    if (!svgText) return;
+    try {
+        downloadCollectiveHeatmapBlob(await renderClassDiffSvgPng(svgText, scale), fileName);
+    } catch (error) {
+        showAlert(error.message || '图片生成失败，请重试');
+    }
 }
 
 async function exportHeatmapSubjectRosterImage() {
@@ -1054,7 +1060,55 @@ async function exportClassDiffTopTenImage() {
 }
 document.getElementById('classDiffTopTenExport').addEventListener('click', exportClassDiffTopTenImage);
 
+const rankCopyImageButton = document.getElementById('classDiffRankCopyImage');
+const rankDownloadImageButton = document.getElementById('classDiffRankDownloadImage');
+
+async function outputClassDiffRankImage(copy) {
+    const button = copy ? rankCopyImageButton : rankDownloadImageButton;
+    const chart = classDiffEchartsInst.mainChart;
+    if (!chart || button.disabled || button.getAttribute('aria-busy') === 'true') return;
+    button.setAttribute('aria-busy', 'true');
+    let png;
+    try {
+        if (copy && (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined')) {
+            throw new Error('当前浏览器不支持复制图片');
+        }
+        const subject = document.getElementById('classDiffRankSubject').value;
+        const dataUrl = chart.getDataURL({type:'svg', backgroundColor:'#ffffff', excludeComponents:['tooltip']});
+        if (!dataUrl?.startsWith('data:image/svg+xml')) throw new Error('暂时无法生成柱状图');
+        const svg = decodeURIComponent(dataUrl.slice(dataUrl.indexOf(',') + 1));
+        png = renderClassDiffSvgPng(svg, 3);
+        if (copy) {
+            // 在点击产生的用户激活期间提交写入，PNG 可以随后生成。
+            await navigator.clipboard.write([new ClipboardItem({'image/png': png})]);
+            rankDownloadImageButton.hidden = true;
+            showToast('已复制图片，可按 Ctrl+V 粘贴', 'success');
+        } else {
+            const fileName = ('名次段分布_' + subject).replace(/[\\/:*?"<>|]/g, '_') + '.png';
+            downloadCollectiveHeatmapBlob(await png, fileName);
+        }
+    } catch (error) {
+        if (copy) {
+            rankDownloadImageButton.hidden = false;
+            const renderError = await png?.catch(reason => reason);
+            const message = renderError instanceof Error ? renderError.message
+                : error.name === 'NotAllowedError' ? '浏览器阻止了剪贴板写入'
+                : error.message;
+            showToast((message || '复制图片失败') + '，可点击「下载 PNG」', 'error');
+        } else {
+            showToast(error.message || '下载图片失败，请重试', 'error');
+        }
+    } finally {
+        button.removeAttribute('aria-busy');
+    }
+}
+
+rankCopyImageButton.addEventListener('click', () => outputClassDiffRankImage(true));
+rankDownloadImageButton.addEventListener('click', () => outputClassDiffRankImage(false));
+
 function renderClassDiffRankDistribution() {
+    rankCopyImageButton.disabled = true;
+    rankDownloadImageButton.disabled = true;
     if (!combinedStudentData.length) return;
     var select = document.getElementById('classDiffRankSubject');
     var selectedSubject = select ? select.value : '';
@@ -1121,6 +1175,8 @@ function renderClassDiffRankDistribution() {
     html += '</tbody></table>';
     container.innerHTML = html;
     updateClassDiffDistributionChart(chartLabels, Object.values(chartDatasets), rankedStudents, selectedSubject, classList);
+    rankCopyImageButton.disabled = false;
+    rankDownloadImageButton.disabled = false;
     // Multi-batch data for extra charts
     var multiBatchRankData = null;
     var selectedBatches = getClassDiffSelectedBatches();
