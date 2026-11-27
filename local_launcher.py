@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 import secrets
 import socket
-import struct
 import subprocess
 import sys
 import threading
@@ -161,90 +160,6 @@ def stop_service():
         raise RuntimeError('服务尚未退出，请稍后通过诊断入口检查。')
 
 
-
-def is_rank_chart_emf(data):
-    # This endpoint handles only the simple vector records emitted by rank-chart-emf.js.
-    sizes = {1: 108, 14: 20, 18: 12, 22: 12, 24: 12, 37: 12, 38: 28, 39: 24, 40: 12, 82: 104}
-    length = len(data)
-    if length < 128 or data[40:44] != b' EMF':
-        return False
-    size_bytes, record_count = struct.unpack_from('<II', data, 48)
-    if size_bytes != length:
-        return False
-    offset = 0
-    records = 0
-    while offset + 8 <= length:
-        kind, size = struct.unpack_from('<II', data, offset)
-        records += 1
-        if size < 8 or size % 4 or offset + size > length or ((offset == 0) != (kind == 1)):
-            return False
-        if kind in sizes:
-            if size != sizes[kind]:
-                return False
-        elif kind in (3, 4):
-            if size < 44 or 28 + 8 * struct.unpack_from('<I', data, offset + 24)[0] != size:
-                return False
-        elif kind == 84:
-            if size < 80:
-                return False
-            chars, string_offset = struct.unpack_from('<II', data, offset + 44)
-            spacing_offset = struct.unpack_from('<I', data, offset + 72)[0]
-            if not chars or string_offset != 76 or spacing_offset != ((76 + chars * 2 + 3) & ~3) or spacing_offset + chars * 4 != size:
-                return False
-        else:
-            return False
-        offset += size
-        if kind == 14:
-            return offset == length and records == record_count
-    return False
-
-
-def copy_windows_emf(data):
-    from ctypes import wintypes as win
-    user = ctypes.WinDLL('user32', use_last_error=True)
-    gdi = ctypes.WinDLL('gdi32', use_last_error=True)
-    user.CreateWindowExW.argtypes = [
-        win.DWORD, win.LPCWSTR, win.LPCWSTR, win.DWORD, ctypes.c_int, ctypes.c_int,
-        ctypes.c_int, ctypes.c_int, win.HWND, win.HMENU, win.HINSTANCE, win.LPVOID,
-    ]
-    user.CreateWindowExW.restype = win.HWND
-    user.DestroyWindow.argtypes = [win.HWND]
-    user.OpenClipboard.argtypes = [win.HWND]
-    user.SetClipboardData.argtypes = [win.UINT, win.HANDLE]
-    user.SetClipboardData.restype = win.HANDLE
-    gdi.SetEnhMetaFileBits.argtypes = [win.UINT, win.LPVOID]
-    gdi.SetEnhMetaFileBits.restype = win.HANDLE
-    gdi.DeleteEnhMetaFile.argtypes = [win.HANDLE]
-
-    hwnd_message = win.HWND(-3)
-    window = user.CreateWindowExW(0, 'STATIC', None, 0, 0, 0, 0, 0, hwnd_message, None, None, None)
-    if not window:
-        raise ctypes.WinError(ctypes.get_last_error())
-    handle = None
-    try:
-        handle = gdi.SetEnhMetaFileBits(len(data), ctypes.create_string_buffer(data))
-        if not handle:
-            raise ctypes.WinError(ctypes.get_last_error())
-        for attempt in range(10):
-            if user.OpenClipboard(window):
-                break
-            if attempt < 9:
-                time.sleep(.03)
-        else:
-            raise RuntimeError('Windows 剪贴板正被其他应用占用，请重试')
-        try:
-            cf_enhmetafile = 14
-            if not user.EmptyClipboard() or not user.SetClipboardData(cf_enhmetafile, handle):
-                raise ctypes.WinError(ctypes.get_last_error())
-            # SetClipboardData transfers ownership to Windows.
-            handle = None
-        finally:
-            user.CloseClipboard()
-    finally:
-        if handle:
-            gdi.DeleteEnhMetaFile(handle)
-        user.DestroyWindow(window)
-
 def serve():
     # Cloud deployments still run the original mineru_server.py / gunicorn.
     if sys.stdout is None:
@@ -261,29 +176,7 @@ def serve():
 
     @app.get('/__local_service__/status')
     def service_status():
-        return jsonify(app_id=APP_ID, project_id=PROJECT_ID, instance=instance, pid=os.getpid(), copy_enhanced_metafile=os.name == 'nt')
-
-    @app.post('/__local_service__/clipboard/emf')
-    def service_copy_emf():
-        if (request.remote_addr != '127.0.0.1' or request.host != f'127.0.0.1:{PORT}'
-                or request.headers.get('Origin') != BASE_URL or request.headers.get('Sec-Fetch-Site') != 'same-origin'):
-            abort(403)
-        if os.name != 'nt':
-            return jsonify(error='原生 EMF 剪贴板仅在 Windows 中可用'), 501
-        if request.mimetype != 'image/emf':
-            abort(415)
-        if not request.content_length or request.content_length > 2 * 1024 * 1024:
-            abort(413)
-        data = request.get_data(cache=False)
-        if not is_rank_chart_emf(data):
-            return jsonify(error='图表的 EMF 数据无效'), 400
-        try:
-            copy_windows_emf(data)
-        except RuntimeError as error:
-            return jsonify(error=str(error)), 409
-        except OSError:
-            return jsonify(error='Windows 剪贴板未能接收 EMF，请重试'), 500
-        return jsonify(ok=True)
+        return jsonify(app_id=APP_ID, project_id=PROJECT_ID, instance=instance, pid=os.getpid())
 
     @app.post('/__local_service__/stop')
     def service_stop():
