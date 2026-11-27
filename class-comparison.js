@@ -1060,61 +1060,60 @@ async function exportClassDiffTopTenImage() {
 }
 document.getElementById('classDiffTopTenExport').addEventListener('click', exportClassDiffTopTenImage);
 
-const rankCopyImageButton = document.getElementById('classDiffRankCopyImage');
+const rankExportEmfButton = document.getElementById('classDiffRankExportEmf');
 const rankCopyPngButton = document.getElementById('classDiffRankCopyPng');
 const rankDownloadImageButton = document.getElementById('classDiffRankDownloadImage');
 
-async function outputClassDiffRankImage(button, clipboardType) {
-    const copySvg = clipboardType === 'image/svg+xml';
+async function outputClassDiffRankImage(button, action) {
     const chart = classDiffEchartsInst.mainChart;
     if (!chart || button.disabled || button.getAttribute('aria-busy') === 'true') return;
     button.setAttribute('aria-busy', 'true');
     let png;
     try {
-        if (clipboardType && (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined')) {
+        if (action === 'copy' && (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined')) {
             throw new Error('当前浏览器不支持复制图片');
-        }
-        if (copySvg && ClipboardItem.supports?.(clipboardType) === false) {
-            throw new Error('当前浏览器不支持复制 SVG');
         }
         const subject = document.getElementById('classDiffRankSubject').value;
         const dataUrl = chart.getDataURL({type:'svg', backgroundColor:'#ffffff', excludeComponents:['tooltip']});
         if (!dataUrl?.startsWith('data:image/svg+xml')) throw new Error('暂时无法生成柱状图');
         const svg = decodeURIComponent(dataUrl.slice(dataUrl.indexOf(',') + 1));
-        if (!copySvg) png = renderClassDiffSvgPng(svg, 3);
-        if (clipboardType) {
-            const image = copySvg ? new Blob([svg], {type:clipboardType}) : png;
+        const fileName = ('名次段分布_' + subject).replace(/[\\/:*?"<>|]/g, '_');
+        if (action === 'emf') {
+            downloadCollectiveHeatmapBlob(rankChartEmf.create(svg), fileName + '.emf');
+            showToast('已导出 EMF，可在 Word 或 PPT 中插入', 'success');
+            return;
+        }
+        png = renderClassDiffSvgPng(svg, 3);
+        if (action === 'copy') {
             // 在点击产生的用户激活期间提交写入，PNG 可以随后生成。
-            await navigator.clipboard.write([new ClipboardItem({[clipboardType]: image})]);
+            await navigator.clipboard.write([new ClipboardItem({'image/png': png})]);
             rankDownloadImageButton.hidden = true;
-            showToast('已复制 ' + (copySvg ? 'SVG' : 'PNG') + '，可按 Ctrl+V 粘贴', 'success');
+            showToast('已复制 PNG，可按 Ctrl+V 粘贴', 'success');
         } else {
-            const fileName = ('名次段分布_' + subject).replace(/[\\/:*?"<>|]/g, '_') + '.png';
-            downloadCollectiveHeatmapBlob(await png, fileName);
+            downloadCollectiveHeatmapBlob(await png, fileName + '.png');
         }
     } catch (error) {
-        if (clipboardType) {
+        if (action === 'copy') {
             rankDownloadImageButton.hidden = false;
             const renderError = await png?.catch(reason => reason);
             const message = renderError instanceof Error ? renderError.message
                 : error.name === 'NotAllowedError' ? '浏览器阻止了剪贴板写入'
                 : error.message;
-            const fallback = copySvg ? '，可改用「复制 PNG」或「下载 PNG」' : '，可点击「下载 PNG」';
-            showToast((message || '复制图片失败') + fallback, 'error');
+            showToast((message || '复制图片失败') + '，可点击「下载 PNG」', 'error');
         } else {
-            showToast(error.message || '下载图片失败，请重试', 'error');
+            showToast(error.message || '导出图片失败，请重试', 'error');
         }
     } finally {
         button.removeAttribute('aria-busy');
     }
 }
 
-rankCopyImageButton.addEventListener('click', () => outputClassDiffRankImage(rankCopyImageButton, 'image/svg+xml'));
-rankCopyPngButton.addEventListener('click', () => outputClassDiffRankImage(rankCopyPngButton, 'image/png'));
+rankExportEmfButton.addEventListener('click', () => outputClassDiffRankImage(rankExportEmfButton, 'emf'));
+rankCopyPngButton.addEventListener('click', () => outputClassDiffRankImage(rankCopyPngButton, 'copy'));
 rankDownloadImageButton.addEventListener('click', () => outputClassDiffRankImage(rankDownloadImageButton));
 
 function renderClassDiffRankDistribution() {
-    rankCopyImageButton.disabled = true;
+    rankExportEmfButton.disabled = true;
     rankCopyPngButton.disabled = true;
     rankDownloadImageButton.disabled = true;
     if (!combinedStudentData.length) return;
@@ -1183,7 +1182,7 @@ function renderClassDiffRankDistribution() {
     html += '</tbody></table>';
     container.innerHTML = html;
     updateClassDiffDistributionChart(chartLabels, Object.values(chartDatasets), rankedStudents, selectedSubject, classList);
-    rankCopyImageButton.disabled = false;
+    rankExportEmfButton.disabled = false;
     rankCopyPngButton.disabled = false;
     rankDownloadImageButton.disabled = false;
     // Multi-batch data for extra charts
