@@ -475,10 +475,87 @@
         readWorkbook,
         enqueue(task) { const next = importQueue.catch(() => {}).then(task); importQueue = next; return next; }
     };
+    function canvasPng(canvas) {
+        return new Promise((resolve, reject) => {
+            canvas.toBlob(blob => {
+                if (blob) resolve(blob);
+                else reject(new Error('图片生成失败，请重试'));
+            }, 'image/png');
+        });
+    }
+
+    async function svgPng(svg, scale) {
+        const image = new root.Image();
+        const url = root.URL.createObjectURL(new Blob([svg], {type:'image/svg+xml;charset=utf-8'}));
+        try {
+            await new Promise((resolve, reject) => {
+                image.onload = resolve;
+                image.onerror = () => reject(new Error('图像转换失败，请重试'));
+                image.src = url;
+            });
+            const {naturalWidth:width, naturalHeight:height} = image;
+            if (!(width > 0 && height > 0)) throw new Error('图片尺寸无效');
+            const ratio = Math.min(scale, 16384 / Math.max(width, height), Math.sqrt(32000000 / (width * height)));
+            const canvas = root.document.createElement('canvas');
+            canvas.width = Math.max(1, Math.floor(width * ratio));
+            canvas.height = Math.max(1, Math.floor(height * ratio));
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('当前浏览器无法生成图片');
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            return await canvasPng(canvas);
+        } finally {
+            root.URL.revokeObjectURL(url);
+        }
+    }
+
+    async function copyPng(button, createPng) {
+        if (button.disabled || button.getAttribute('aria-busy') === 'true') return;
+        if (!root.navigator?.clipboard?.write || typeof root.ClipboardItem !== 'function') {
+            root.showToast('当前浏览器不支持复制图片', 'error');
+            return;
+        }
+        button.setAttribute('aria-busy', 'true');
+        // Start the clipboard write within the click even when image rendering is asynchronous.
+        const png = Promise.resolve().then(createPng);
+        let renderError;
+        png.catch(error => { renderError = error; });
+        try {
+            await root.navigator.clipboard.write([new root.ClipboardItem({'image/png':png})]);
+            root.showToast('已复制 PNG，可按 Ctrl+V 粘贴', 'success');
+        } catch (error) {
+            const message = renderError?.message || (error.name === 'NotAllowedError'
+                ? '浏览器阻止了剪贴板写入，请检查网页的剪贴板权限' : error.message);
+            root.showToast(message || '复制图片失败，请重试', 'error');
+        } finally {
+            button.removeAttribute('aria-busy');
+        }
+    }
+
+    const images = {canvasPng, svgPng, copyPng};
     const chartDoms = new Set();
+    const chartCopyButtons = new WeakMap();
     let resizeTimer, themeRegistered = false;
     const observer = typeof root.ResizeObserver === 'function' ? new root.ResizeObserver(() => charts.schedule()) : null;
+    function copyChartPng(button, chart) {
+        return copyPng(button, async () => {
+            if (!chart || chart.isDisposed() || !chart.getWidth() || !chart.getHeight() || !chart.getOption()?.series?.length) {
+                throw new Error('暂无可复制的图表');
+            }
+            const width = chart.getWidth(), height = chart.getHeight();
+            const pixelRatio = Math.min(3, 16384 / Math.max(width, height), Math.sqrt(32000000 / (width * height)));
+            const url = chart.getDataURL({type:'png', pixelRatio, backgroundColor:'#ffffff', excludeComponents:['tooltip']});
+            if (url?.startsWith('data:image/svg+xml')) {
+                return svgPng(decodeURIComponent(url.slice(url.indexOf(',') + 1)), pixelRatio);
+            }
+            if (url?.startsWith('data:image/png;base64,')) return (await root.fetch(url)).blob();
+            throw new Error('暂时无法生成图表图片');
+        });
+    }
+
     const charts = {
+        copyPng: copyChartPng,
         init(dom, theme, options) {
             if (!root.echarts) throw new Error('图表组件尚未加载，请刷新后重试');
             this.dispose(dom);
@@ -489,6 +566,17 @@
             const chart = root.echarts.init(dom, theme || 'score-app', options);
             chartDoms.add(dom);
             if (observer) observer.observe(dom);
+            if (!dom.hasAttribute('data-custom-chart-copy')) {
+                const button = root.document.createElement('button');
+                button.type = 'button';
+                button.className = 'filter-btn chart-copy-png';
+                button.textContent = '复制 PNG';
+                button.title = '按当前视图复制图表';
+                button.addEventListener('click', () => copyChartPng(button, chart));
+                dom.classList.add('chart-copy-host');
+                dom.appendChild(button);
+                chartCopyButtons.set(dom, button);
+            }
             return chart;
         },
         dispose(dom) {
@@ -496,6 +584,11 @@
             const chart = root.echarts?.getInstanceByDom(dom);
             if (chart && !chart.isDisposed()) chart.dispose();
             chartDoms.delete(dom);
+            if (chartCopyButtons.has(dom)) {
+                chartCopyButtons.get(dom).remove();
+                chartCopyButtons.delete(dom);
+                dom.classList.remove('chart-copy-host');
+            }
             if (observer) observer.unobserve(dom);
         },
         schedule() {
@@ -513,7 +606,7 @@
         }
     };
     if (root.addEventListener) root.addEventListener('resize', () => charts.schedule(), {passive:true});
-    const core = {FONT, text, number, grade, hasValue, escapeHtml, clone, classKey, classLabel, studentKey, pdfBytes, compactPdf, storage, workspaces, imports, charts};
+    const core = {FONT, text, number, grade, hasValue, escapeHtml, clone, classKey, classLabel, studentKey, pdfBytes, compactPdf, storage, workspaces, imports, charts, images};
     root.AppCore = core;
     if (typeof module !== 'undefined') module.exports = core;
 })(typeof window !== 'undefined' ? window : globalThis);

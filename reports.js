@@ -1296,7 +1296,11 @@ function buildClassReportLeaderboards(students, currentData, batch, compareBatch
 }
 
 function renderClassLeaderboardHeading(id,title) {
-    return `<div class="sr-class-leaderboard-heading"><h4 id="${id}">${title}</h4><button type="button" class="class-top-ten-export sr-class-leaderboard-export" title="导出完整榜单高清 PNG（不受滚动范围限制）" aria-label="导出${title}高清PNG" onclick="exportClassReportLeaderboard(this)">高清 PNG</button></div>`;
+    return `<div class="sr-class-leaderboard-heading"><h4 id="${id}">${title}</h4>
+        <div class="sr-class-leaderboard-actions">
+            <button type="button" class="class-top-ten-export sr-class-leaderboard-export" aria-label="复制${title} PNG" onclick="exportClassReportLeaderboard(this, true)">复制 PNG</button>
+            <button type="button" class="class-top-ten-export sr-class-leaderboard-export" title="导出完整榜单高清 PNG（不受滚动范围限制）" aria-label="导出${title}高清PNG" onclick="exportClassReportLeaderboard(this)">高清 PNG</button>
+        </div></div>`;
 }
 
 function drawClassReportLeaderboard(table, title, caption, legend, kind) {
@@ -1391,7 +1395,7 @@ function drawClassReportLeaderboard(table, title, caption, legend, kind) {
     return canvas;
 }
 
-async function exportClassReportLeaderboard(button) {
+async function exportClassReportLeaderboard(button, copy = false) {
     if (button.disabled) return;
     const board = button.closest('.sr-class-leaderboard');
     const table = board?.querySelector('table');
@@ -1404,13 +1408,20 @@ async function exportClassReportLeaderboard(button) {
         .map(el=>el.textContent.trim()).filter(t=>!t.startsWith('生成时间'));
     const caption = meta.join(' · ');
     const legend = board.querySelector('.sr-class-top-ten-legend')?.textContent.trim() || '';
+    async function renderPng() {
+        if (document.fonts?.ready) await document.fonts.ready;
+        const canvas = drawClassReportLeaderboard(table,title,caption,legend,board.dataset.classLeaderboard);
+        return AppCore.images.canvasPng(canvas);
+    }
+    if (copy) {
+        await AppCore.images.copyPng(button, renderPng);
+        return;
+    }
     const original = button.textContent;
     button.disabled = true;
     button.textContent = '导出中…';
     try {
-        if (document.fonts?.ready) await document.fonts.ready;
-        const canvas = drawClassReportLeaderboard(table,title,caption,legend,board.dataset.classLeaderboard);
-        const blob = await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('图片生成失败，请重试')),'image/png'));
+        const blob = await renderPng();
         const filename = [title,...meta].map(s=>s.replace(/[\\/:*?"<>|：]/g,'_').slice(0,60)).join('_')+'.png';
         downloadCollectiveHeatmapBlob(blob,filename);
     } catch (error) {

@@ -545,38 +545,10 @@ function buildHeatmapReportSvg(subjectName, selectedClass, buckets, total) {
     return parts.join('');
 }
 
-async function renderClassDiffSvgPng(svgText, scale) {
-    const image = new Image();
-    const url = URL.createObjectURL(new Blob([svgText], {type:'image/svg+xml;charset=utf-8'}));
-    try {
-        await new Promise((resolve, reject) => {
-            image.onload = resolve;
-            image.onerror = () => reject(new Error('图像转换失败，请重试'));
-            image.src = url;
-        });
-        const canvas = document.createElement('canvas');
-        canvas.width = image.naturalWidth * scale;
-        canvas.height = image.naturalHeight * scale;
-        const context = canvas.getContext('2d');
-        if (!context) throw new Error('当前浏览器无法生成图片');
-        context.fillStyle = '#ffffff';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        return await new Promise((resolve, reject) => {
-            canvas.toBlob(blob => {
-                if (blob) resolve(blob);
-                else reject(new Error('图片生成失败，请重试'));
-            }, 'image/png');
-        });
-    } finally {
-        URL.revokeObjectURL(url);
-    }
-}
-
 async function downloadHeatmapReportImage(svgText, fileName, scale = 2) {
     if (!svgText) return;
     try {
-        downloadCollectiveHeatmapBlob(await renderClassDiffSvgPng(svgText, scale), fileName);
+        downloadCollectiveHeatmapBlob(await AppCore.images.svgPng(svgText, scale), fileName);
     } catch (error) {
         showAlert(error.message || '图片生成失败，请重试');
     }
@@ -909,6 +881,7 @@ function renderClassDiffTopTen() {
     const totalNote = rowCount && !columns[0].entries.length ? ' · 暂无总分成绩' : '';
     document.getElementById('classDiffTopTenSummary').textContent = `${students.length} 人${totalNote}`;
     document.getElementById('classDiffTopTenExport').disabled = !rowCount;
+    document.getElementById('classDiffTopTenCopyPng').disabled = !rowCount;
     table.parentElement.scrollTop = 0;
 }
 
@@ -1041,17 +1014,20 @@ function buildClassDiffTopTenExportSvg(table, caption) {
     return {svg:svg.join(''), usePng};
 }
 
-async function exportClassDiffTopTenImage() {
+function getClassDiffTopTenImage() {
     const table = document.getElementById('classDiffTopTenTable');
-    const button = document.getElementById('classDiffTopTenExport');
-    if (button.disabled) return;
+    const scope = document.getElementById('classDiffTopTenClass').selectedOptions[0].textContent;
+    const batch = document.getElementById('batchLabelClassDiff').textContent.trim();
+    const summary = document.getElementById('classDiffTopTenSummary').textContent;
+    const mode = table.classList.contains('show-details') ? '详情' : '名单';
+    const filename = ['各科前十', batch, scope, mode].map(part => part.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)).join('_');
+    return {...buildClassDiffTopTenExportSvg(table, `${batch} · ${scope} · ${summary}`), filename};
+}
+
+async function exportClassDiffTopTenImage() {
+    if (document.getElementById('classDiffTopTenExport').disabled) return;
     try {
-        const scope = document.getElementById('classDiffTopTenClass').selectedOptions[0].textContent;
-        const batch = document.getElementById('batchLabelClassDiff').textContent.trim();
-        const summary = document.getElementById('classDiffTopTenSummary').textContent;
-        const mode = table.classList.contains('show-details') ? '详情' : '名单';
-        const filename = ['各科前十', batch, scope, mode].map(part => part.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)).join('_');
-        const {svg, usePng} = buildClassDiffTopTenExportSvg(table, `${batch} · ${scope} · ${summary}`);
+        const {svg, usePng, filename} = getClassDiffTopTenImage();
         if (usePng) downloadHeatmapReportImage(svg, filename + '.png', 1);
         else downloadCollectiveHeatmapBlob(new Blob([svg], {type:'image/svg+xml;charset=utf-8'}), filename + '.svg');
     } catch (error) {
@@ -1059,37 +1035,17 @@ async function exportClassDiffTopTenImage() {
     }
 }
 document.getElementById('classDiffTopTenExport').addEventListener('click', exportClassDiffTopTenImage);
+document.getElementById('classDiffTopTenCopyPng').addEventListener('click', function() {
+    AppCore.images.copyPng(this, () => {
+        const {svg, usePng} = getClassDiffTopTenImage();
+        return AppCore.images.svgPng(svg, usePng ? 1 : 4);
+    });
+});
 
 const rankCopyPngButton = document.getElementById('classDiffRankCopyPng');
-
-async function copyClassDiffRankPng() {
-    const chart = classDiffEchartsInst.mainChart;
-    if (!chart || rankCopyPngButton.disabled || rankCopyPngButton.getAttribute('aria-busy') === 'true') return;
-    rankCopyPngButton.setAttribute('aria-busy', 'true');
-    let png;
-    try {
-        if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
-            throw new Error('当前浏览器不支持复制图片');
-        }
-        const dataUrl = chart.getDataURL({type:'svg', backgroundColor:'#ffffff', excludeComponents:['tooltip']});
-        if (!dataUrl?.startsWith('data:image/svg+xml')) throw new Error('暂时无法生成柱状图');
-        const svg = decodeURIComponent(dataUrl.slice(dataUrl.indexOf(',') + 1));
-        png = renderClassDiffSvgPng(svg, 3);
-        // 在点击产生的用户激活期间提交写入，PNG 可以随后生成。
-        await navigator.clipboard.write([new ClipboardItem({'image/png': png})]);
-        showToast('已复制 PNG，可按 Ctrl+V 粘贴', 'success');
-    } catch (error) {
-        const renderError = await png?.catch(reason => reason);
-        const message = renderError instanceof Error ? renderError.message
-            : error.name === 'NotAllowedError' ? '浏览器阻止了剪贴板写入，请检查网页的剪贴板权限'
-            : error.message;
-        showToast(message || '复制图片失败，请重试', 'error');
-    } finally {
-        rankCopyPngButton.removeAttribute('aria-busy');
-    }
-}
-
-rankCopyPngButton.addEventListener('click', copyClassDiffRankPng);
+rankCopyPngButton.addEventListener('click', function() {
+    AppCore.charts.copyPng(this, classDiffEchartsInst.mainChart);
+});
 
 function renderClassDiffRankDistribution() {
     rankCopyPngButton.disabled = true;

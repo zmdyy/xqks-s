@@ -224,7 +224,7 @@ SeatingModule.prototype.buildLayoutHTML = function() {
         '<div class="seating-content-wrapper">' +
             '<div class="seating-main" id="sm-main">' +
                 '<div class="stage">\u8BB2 \u53F0</div>' +
-                '<div class="sm-seat-tools"><button class="btn2 btn2-toggle" id="sm-btnAddSeats">新增位置</button><button type="button" class="btn2 btn2-primary" id="sm-btnExportImage" style="margin-left:auto" title="按当前标签显示状态导出完整座位表">高清 PNG</button><button class="btn2 btn2-toggle" data-sm-add-row="top" hidden>上方增加整排</button><button class="btn2 btn2-toggle" data-sm-add-row="bottom" hidden>下方增加整排</button><span id="sm-addSeatHint" hidden>点击＋新增；同一排的其他＋可补齐位置。</span></div>' +
+                '<div class="sm-seat-tools"><button class="btn2 btn2-toggle" id="sm-btnAddSeats">新增位置</button><button type="button" class="btn2 btn2-primary" id="sm-btnCopyPng" style="margin-left:auto" title="按当前标签显示状态复制完整座位表">复制 PNG</button><button type="button" class="btn2 btn2-primary" id="sm-btnExportImage" title="按当前标签显示状态导出完整座位表">高清 PNG</button><button class="btn2 btn2-toggle" data-sm-add-row="top" hidden>上方增加整排</button><button class="btn2 btn2-toggle" data-sm-add-row="bottom" hidden>下方增加整排</button><span id="sm-addSeatHint" hidden>点击＋新增；同一排的其他＋可补齐位置。</span></div>' +
                 '<div class="seat-grid" id="sm-seatGrid"></div>' +
             '</div>' +
             '<div class="seating-bottom">' +
@@ -369,6 +369,10 @@ SeatingModule.prototype.bindEvents = function() {
     // Export
     var btnImage = this.root.querySelector('#sm-btnExportImage');
     if (btnImage) btnImage.onclick = function() { exportSeatingTableImage(self, btnImage); };
+    var btnCopyPng = this.root.querySelector('#sm-btnCopyPng');
+    if (btnCopyPng) btnCopyPng.onclick = function() {
+        AppCore.images.copyPng(btnCopyPng, () => AppCore.images.canvasPng(drawSeatingTableImage(self)));
+    };
     var btnExp = this.root.querySelector('#sm-btnExport');
     if (btnExp) btnExp.onclick = function() { self.exportData(); };
     var btnHelpGraph = this.root.querySelector('#sm-btnHelpGraph');
@@ -855,7 +859,7 @@ async function exportSeatingTableImage(module,button) {
     try{
         const filename=[module.className || '班级','座位表',module.showTags?'含标签':'简洁版'].join('_').replace(/[\\/:*?"<>|]/g,'_')+'.png';
         const canvas=drawSeatingTableImage(module);
-        const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('图片生成失败，请重试')),'image/png'));
+        const blob=await AppCore.images.canvasPng(canvas);
         downloadCollectiveHeatmapBlob(blob,filename);
     }catch(error){await showAlert(error.message || '座位表图片生成失败，请重试');}
     finally{button.disabled=false;button.textContent=original;}
