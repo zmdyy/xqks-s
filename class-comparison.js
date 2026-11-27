@@ -779,11 +779,19 @@ function renderClassDiffGradeChart(selectedSubjectName, stats, classNames, grade
                 return '班级: <b>' + params.name + '</b><br/>' + params.seriesName + ': <b>' + params.value + '</b>人';
             }
         },
-        legend: { data: grades, top: 0, textStyle: { fontSize: 14 } },
+        title: {
+            text: '科目：' + selectedSubjectName,
+            left: 12, top: 2,
+            padding: [4, 8],
+            backgroundColor: '#ffffff',
+            borderColor: '#cbd5e1', borderWidth: 1, borderRadius: 5,
+            textStyle: { color: '#334155', fontSize: 13, fontWeight: 600 }
+        },
+        legend: { data: grades, top: 30, textStyle: { fontSize: 14 } },
         xAxis: { type: 'category', data: classNames, axisLabel: { fontSize: 14, rotate: 45, interval: 0 } },
         yAxis: { type: 'value', name: '人数', axisLabel: { fontSize: 14 } },
         series: series,
-        grid: { left: 60, right: 20, top: 40, bottom: 80 }
+        grid: { left: 60, right: 20, top: 68, bottom: 80 }
     });
     chart.resize();
     chart.on('click', function(params) {
