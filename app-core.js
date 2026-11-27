@@ -523,7 +523,7 @@
         png.catch(error => { renderError = error; });
         try {
             await root.navigator.clipboard.write([new root.ClipboardItem({'image/png':png})]);
-            root.showToast('已复制 PNG，可按 Ctrl+V 粘贴', 'success');
+            root.showToast('已复制图片，可按 Ctrl+V 粘贴', 'success');
         } catch (error) {
             const message = renderError?.message || (error.name === 'NotAllowedError'
                 ? '浏览器阻止了剪贴板写入，请检查网页的剪贴板权限' : error.message);
@@ -569,8 +569,8 @@
             if (!dom.hasAttribute('data-custom-chart-copy')) {
                 const button = root.document.createElement('button');
                 button.type = 'button';
-                button.className = 'filter-btn chart-copy-png';
-                button.textContent = '复制 PNG';
+                button.className = 'image-action-btn chart-copy-png';
+                button.textContent = '复制图片';
                 button.title = '按当前视图复制图表';
                 button.addEventListener('click', () => copyChartPng(button, chart));
                 dom.classList.add('chart-copy-host');

@@ -224,7 +224,7 @@ SeatingModule.prototype.buildLayoutHTML = function() {
         '<div class="seating-content-wrapper">' +
             '<div class="seating-main" id="sm-main">' +
                 '<div class="stage">\u8BB2 \u53F0</div>' +
-                '<div class="sm-seat-tools"><button class="btn2 btn2-toggle" id="sm-btnAddSeats">新增位置</button><button type="button" class="btn2 btn2-primary" id="sm-btnCopyPng" style="margin-left:auto" title="按当前标签显示状态复制完整座位表">复制 PNG</button><button type="button" class="btn2 btn2-primary" id="sm-btnExportImage" title="按当前标签显示状态导出完整座位表">高清 PNG</button><button class="btn2 btn2-toggle" data-sm-add-row="top" hidden>上方增加整排</button><button class="btn2 btn2-toggle" data-sm-add-row="bottom" hidden>下方增加整排</button><span id="sm-addSeatHint" hidden>点击＋新增；同一排的其他＋可补齐位置。</span></div>' +
+                '<div class="sm-seat-tools"><button class="btn2 btn2-toggle" id="sm-btnAddSeats">新增位置</button><button type="button" class="image-action-btn" id="sm-btnCopyPng" style="margin-left:auto" title="按当前标签显示状态复制完整座位表">复制图片</button><button type="button" class="btn2 btn2-primary" id="sm-btnExportImage" title="按当前标签显示状态导出完整座位表">高清 PNG</button><button class="btn2 btn2-toggle" data-sm-add-row="top" hidden>上方增加整排</button><button class="btn2 btn2-toggle" data-sm-add-row="bottom" hidden>下方增加整排</button><span id="sm-addSeatHint" hidden>点击＋新增；同一排的其他＋可补齐位置。</span></div>' +
                 '<div class="seat-grid" id="sm-seatGrid"></div>' +
             '</div>' +
             '<div class="seating-bottom">' +

@@ -572,7 +572,7 @@ function renderStudentReadableReport(studentName, thresholdVal) {
     html.push('<div id="studentReportWeakCompareChart" class="sr-chart sr-chart-wide"></div>');
     html.push('</div>');
 
-    html.push('<div class="sr-section"><h3>五、薄弱小题明细清单</h3>');
+    html.push('<div class="sr-section" data-report-list-image="weak-items">' + renderReportListImageHeading('五、薄弱小题明细清单', !weakItems.length));
     if (weakItems.length) {
         html.push('<table class="sr-table"><thead><tr><th>科目</th><th>题号/模块</th><th>得分</th><th>个人得分率</th><th>全体该题得分率</th><th>与全体对比</th><th>学生答案</th><th>正确答案</th></tr></thead><tbody>');
         weakItems.slice(0, 36).forEach(function(w) {
@@ -1295,10 +1295,134 @@ function buildClassReportLeaderboards(students, currentData, batch, compareBatch
     });
 }
 
+function renderReportListImageHeading(title, disabled = false) {
+    const state = disabled ? ' disabled' : '';
+    return `<div class="sr-list-image-heading"><h3>${title}</h3><div class="sr-class-leaderboard-actions">
+        <button type="button" class="image-action-btn" onclick="exportReportListImage(this)"${state}>导出 PNG</button>
+        <button type="button" class="image-action-btn" onclick="exportReportListImage(this, true)"${state}>复制图片</button>
+    </div></div>`;
+}
+
+function drawReportListImage(section, title, caption) {
+    const tables = [...section.querySelectorAll(':scope > table')];
+    if (!tables.length) throw new Error('暂无可生成图片的清单');
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('当前浏览器无法生成图片');
+    const family = getComputedStyle(tables[0]).fontFamily || 'sans-serif';
+    const width = 1040, margin = 24, contentWidth = width - margin * 2;
+    const lineHeight = 20, padding = 10;
+    const useFont = (size, weight = 400) => { context.font = `${weight} ${size}px ${family}`; };
+    const wrap = (text, maxWidth) => {
+        const lines = [];
+        let line = '';
+        for (const char of text) {
+            if (line && context.measureText(line + char).width > maxWidth) {
+                lines.push(line);
+                line = '';
+            }
+            line += char;
+        }
+        lines.push(line);
+        return lines;
+    };
+    const plans = tables.map(table => {
+        const weights = section.dataset.reportListImage === 'weak-items'
+            ? [.085, .125, .075, .115, .14, .16, .15, .15]
+            : [.16, .08, .76];
+        const columns = weights.map(weight => weight * contentWidth);
+        const rows = [...table.rows].map(row => {
+            const header = row.parentElement === table.tHead;
+            useFont(14, header ? 700 : 400);
+            const cells = [...row.cells].map((cell, index) => {
+                const badge = cell.querySelector('.sr-pill');
+                return {
+                    lines:wrap(cell.textContent.trim().replace(/\s+/g, ' '), columns[index] - 2 * padding),
+                    color:header ? '#ffffff' : badge ? getComputedStyle(badge).color : '#1e293b'
+                };
+            });
+            return {header, cells, height:2 * padding + lineHeight * Math.max(1, ...cells.map(cell => cell.lines.length))};
+        });
+        return {columns, rows};
+    });
+    useFont(13);
+    const captionLines = caption ? wrap(caption, contentWidth) : [];
+    const notes = [...section.querySelectorAll(':scope > .sr-note-box')]
+        .flatMap(node => wrap(node.textContent.trim(), contentWidth));
+    const height = 78 + lineHeight * captionLines.length + margin
+        + plans.reduce((total, {rows}) => total + 12 + rows.reduce((height, row) => height + row.height, 0), 0)
+        + lineHeight * notes.length;
+    const scale = Math.min(3, 16384 / Math.max(width, height), Math.sqrt(32000000 / (width * height)));
+    canvas.width = Math.floor(width * scale);
+    canvas.height = Math.floor(height * scale);
+    context.scale(canvas.width / width, canvas.height / height);
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.textBaseline = 'middle';
+    useFont(24, 700);
+    context.fillStyle = '#1e3a5f';
+    context.fillText(title, margin, 36);
+    useFont(13);
+    context.fillStyle = '#475569';
+    captionLines.forEach((line, index) => context.fillText(line, margin, 64 + index * lineHeight));
+    let y = 78 + captionLines.length * lineHeight;
+    for (const {columns, rows} of plans) {
+        rows.forEach((row, index) => {
+            let x = margin;
+            useFont(14, row.header ? 700 : 400);
+            row.cells.forEach(({lines, color}, columnIndex) => {
+                const cellWidth = columns[columnIndex];
+                context.fillStyle = row.header ? '#1e3a5f' : index % 2 ? '#ffffff' : '#f8fafc';
+                context.fillRect(x, y, cellWidth, row.height);
+                context.strokeStyle = '#e2e8f0';
+                context.strokeRect(x, y, cellWidth, row.height);
+                context.fillStyle = color;
+                const start = y + (row.height - (lines.length - 1) * lineHeight) / 2;
+                lines.forEach((text, line) => context.fillText(text, x + padding, start + line * lineHeight));
+                x += cellWidth;
+            });
+            y += row.height;
+        });
+        y += 12;
+    }
+    useFont(13);
+    context.fillStyle = '#475569';
+    notes.forEach((line, index) => context.fillText(line, margin, y + 10 + index * lineHeight));
+    return canvas;
+}
+
+async function exportReportListImage(button, copy = false) {
+    if (button.disabled) return;
+    const section = button.closest('[data-report-list-image]');
+    const title = section.querySelector('h3').textContent.trim();
+    const report = section.closest('.student-readable-report, .comp-readable-report');
+    const reportName = report.querySelector('h2')?.textContent.trim() || '';
+    const metadata = [...report.querySelectorAll('.sr-meta > div, .cr-meta > div')]
+        .map(node => node.textContent.trim()).filter(text => !text.startsWith('生成时间'));
+    const caption = [reportName, ...metadata].filter(Boolean).join(' · ');
+    const renderPng = async () => {
+        if (document.fonts?.ready) await document.fonts.ready;
+        return AppCore.images.canvasPng(drawReportListImage(section, title, caption));
+    };
+    if (copy) {
+        await AppCore.images.copyPng(button, renderPng);
+        return;
+    }
+    button.disabled = true;
+    try {
+        const filename = [reportName, title].filter(Boolean).join('_').replace(/[\\/:*?"<>|]/g, '_').slice(0, 100) + '.png';
+        downloadCollectiveHeatmapBlob(await renderPng(), filename);
+    } catch (error) {
+        showToast(error.message || '清单图片导出失败，请重试', 'error');
+    } finally {
+        button.disabled = false;
+    }
+}
+
 function renderClassLeaderboardHeading(id,title) {
     return `<div class="sr-class-leaderboard-heading"><h4 id="${id}">${title}</h4>
         <div class="sr-class-leaderboard-actions">
-            <button type="button" class="class-top-ten-export sr-class-leaderboard-export" aria-label="复制${title} PNG" onclick="exportClassReportLeaderboard(this, true)">复制 PNG</button>
+            <button type="button" class="image-action-btn sr-class-leaderboard-export" aria-label="复制图片：${title}" onclick="exportClassReportLeaderboard(this, true)">复制图片</button>
             <button type="button" class="class-top-ten-export sr-class-leaderboard-export" title="导出完整榜单高清 PNG（不受滚动范围限制）" aria-label="导出${title}高清PNG" onclick="exportClassReportLeaderboard(this)">高清 PNG</button>
         </div></div>`;
 }
@@ -1843,7 +1967,7 @@ function renderSubjectTeachingReadableReport(classNames, subjectName, compareBat
     html.push('<div id="subjectReportItemRateChart" class="sr-chart sr-chart-wide"></div>');
     html.push('<div id="subjectReportFlowChart" class="sr-chart sr-chart-wide"></div>');
     html.push('</div></div>');
-    html.push('<div class="sr-section"><h3>三、分层结构与流转名单</h3>');
+    html.push('<div class="sr-section" data-report-list-image="subject-flow">' + renderReportListImageHeading('三、分层结构与流转名单'));
     html.push(renderSubjectGradeNameTable(rows, subjectPop, tierMode));
     html.push(renderSubjectFlowNameTable(flow));
     html.push('</div>');
