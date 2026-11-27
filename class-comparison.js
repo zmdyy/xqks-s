@@ -1063,6 +1063,20 @@ document.getElementById('classDiffTopTenExport').addEventListener('click', expor
 const rankExportEmfButton = document.getElementById('classDiffRankExportEmf');
 const rankCopyPngButton = document.getElementById('classDiffRankCopyPng');
 const rankDownloadImageButton = document.getElementById('classDiffRankDownloadImage');
+let rankNativeEmfClipboard = false;
+if (location.protocol === 'http:' && location.hostname === '127.0.0.1') {
+    fetch('/__local_service__/status', {mode:'same-origin', cache:'no-store'})
+        .then(response => response.ok ? response.json() : null)
+        .then(status => {
+            rankNativeEmfClipboard = status?.app_id === 'score-analysis-local-v1' && status.copy_enhanced_metafile === true;
+            if (rankNativeEmfClipboard) {
+                rankExportEmfButton.textContent = '复制 EMF';
+                rankExportEmfButton.title = '以 Windows 原生矢量格式复制柱状图，可粘贴到 Word 或 PPT';
+            }
+        })
+        .catch(() => {}); // 旧启动器或普通静态预览仍可下载 EMF 文件。
+}
+
 
 async function outputClassDiffRankImage(button, action) {
     const chart = classDiffEchartsInst.mainChart;
@@ -1079,8 +1093,16 @@ async function outputClassDiffRankImage(button, action) {
         const svg = decodeURIComponent(dataUrl.slice(dataUrl.indexOf(',') + 1));
         const fileName = ('名次段分布_' + subject).replace(/[\\/:*?"<>|]/g, '_');
         if (action === 'emf') {
-            downloadCollectiveHeatmapBlob(rankChartEmf.create(svg), fileName + '.emf');
-            showToast('已导出 EMF，可在 Word 或 PPT 中插入', 'success');
+            const emf = rankChartEmf.create(svg);
+            if (rankNativeEmfClipboard) {
+                const response = await fetch('/__local_service__/clipboard/emf', {method:'POST', mode:'same-origin', body:emf});
+                const result = await response.json().catch(() => null);
+                if (!response.ok || !result?.ok) throw new Error(result?.error || '复制 EMF 失败，请确认本地服务已启动');
+                showToast('已复制 EMF，可到 Word 或 PPT 按 Ctrl+V 粘贴', 'success');
+            } else {
+                downloadCollectiveHeatmapBlob(emf, fileName + '.emf');
+                showToast('已导出 EMF，可在 Word 或 PPT 中插入', 'success');
+            }
             return;
         }
         png = renderClassDiffSvgPng(svg, 3);
