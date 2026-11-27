@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>学情可视化展板</title>
-    <link rel="preload" href="reports.js?v=individual-list-copy" as="script">
+    <link rel="preload" href="reports.js?v=question-table-copy" as="script">
     <link rel="preload" href="class-comparison.js?v=grade-chart-subject-label" as="script">
     <link rel="preload" href="seating.js?v=report-image-actions" as="script">
     <link rel="preload" href="seating-data.js" as="script">
@@ -411,11 +411,16 @@
                 <th>题目</th><th>分值表头</th><th>得分均值</th><th>最高分</th><th>最低分</th><th>标准答案</th><th>选项分布</th><th>得分率(%)</th>
             </tr></thead><tbody></tbody></table>
         </div>
-        <div style="font-size:15px;font-weight:bold;color:#e74c3c;margin-top:16px;margin-bottom:4px;" id="lowStatsTitle"></div>
+        <div data-report-list-image="threshold-questions" style="margin-top:16px;">
+            <div class="sr-list-image-heading">
+                <h4 id="lowStatsTitle" style="font-size:15px;color:#e74c3c;margin:0;"></h4>
+                <button type="button" class="image-action-btn" id="copyLowStatsImage" onclick="exportReportListImage(this, true)" disabled>复制图片</button>
+            </div>
         <div class="scroll-container" style="max-height:160px;">
             <table id="lowStatsTable"><thead><tr>
                 <th>题目</th><th>分值表头</th><th>得分均值</th><th>最高分</th><th>最低分</th><th>标准答案</th><th>选项分布</th><th>得分率(%)</th>
             </tr></thead><tbody></tbody></table>
+        </div>
         </div>
     </div>
 
@@ -1142,7 +1147,7 @@
     </div>
 </div>
 
-<script src="reports.js?v=individual-list-copy"></script>
+<script src="reports.js?v=question-table-copy"></script>
 <script src="class-comparison.js?v=grade-chart-subject-label"></script>
 <script src="seating-data.js"></script>
 <script src="seating-engine.js"></script>
@@ -6481,6 +6486,8 @@ function renderCollectiveTables() {
     document.getElementById('allStatsTitle').innerHTML = `全部题目统计（<b>${escapeHtml(ct)}${escapeHtml(subjTitle)}</b>）`;
     document.getElementById('lowStatsTitle').innerHTML = `低于阈值题目（<b>${escapeHtml(ct)}${escapeHtml(subjTitle)}</b>，阈=${collectiveThreshold}%）`;
 
+    const copyButton = document.getElementById('copyLowStatsImage');
+    copyButton.disabled = true;
     if (!fd.headers.length || !fd.data.length) {
         document.querySelector('#questionStatsTable tbody').innerHTML = '<tr><td colspan="8">暂无小题分数数据</td></tr>';
         document.querySelector('#lowStatsTable tbody').innerHTML = '<tr><td colspan="8">暂无数据</td></tr>';
@@ -6514,6 +6521,7 @@ function renderCollectiveTables() {
     });
     document.querySelector('#questionStatsTable tbody').innerHTML = allRows.join('') || '<tr><td colspan="8">无数据</td></tr>';
     document.querySelector('#lowStatsTable tbody').innerHTML = lowRows.length ? lowRows.join('') : '<tr><td colspan="8" style="color:#aaa;">无低于阈值的题目</td></tr>';
+    copyButton.disabled = !lowRows.length;
 }
 
 function renderCollectiveRankBar() {
@@ -6670,10 +6678,12 @@ function renderLevelAnalysis() {
     let html = '';
     selectedGrades.forEach(function(lv) {
         const students = fd.data.filter(function(r) { return String(r[gradeCol]||'').trim() === lv; });
-        html += '<div style="font-weight:bold;color:#2980b9;margin:8px 0 4px;">' + escapeHtml(lv) + ' 等级：' + students.length + '人（<b>' + escapeHtml(ct) + '</b>）</div>';
-        if (!students.length) { html += '<div style="color:#aaa;">该等级下无学生</div>'; return; }
+        const heading = escapeHtml(lv + ' 等级：' + students.length + '人（' + ct + (ss ? '，' + ss : '') + '）');
+        html += '<div data-report-list-image="level-questions" style="margin-top:8px;">'
+            + renderReportListImageHeading(heading, {heading:'h4', disabled:!students.length || !qo.some(t => qd[t]?.scoreIdx != null)});
+        if (!students.length) { html += '<div style="color:#aaa;">该等级下无学生</div></div>'; return; }
         var groupContextId = registerCollectiveQuestionGroupContext('level', lv + '等级', students, fd, ss);
-        html += '<div style="margin:2px 0 6px;font-size:12px;color:#555;">学生名单：' + students.map(function(s) { return escapeHtml(s[fd.nameField]); }).join('、') + '</div>';
+        html += '<div class="sr-note-box" style="margin:2px 0 6px;font-size:12px;color:#555;">学生名单：' + students.map(function(s) { return escapeHtml(s[fd.nameField]); }).join('、') + '</div>';
         html += '<div class="scroll-container" style="max-height:200px;"><table><thead><tr><th>题目</th><th>分值表头</th><th>得分均值</th><th>最高分</th><th>最低分</th><th>选项分布</th><th>得分率(%)</th></tr></thead><tbody>';
         qo.forEach(function(t) {
             const item = qd[t]; if (!item || item.scoreIdx == null) return;
@@ -6684,7 +6694,7 @@ function renderLevelAnalysis() {
             var wd = ''; if (item.ansIdx != null) { const cnts = {}; students.forEach(function(r) { const v = String(r[fd.headers[item.ansIdx]]||'').toUpperCase().trim(); if (v) cnts[v] = (cnts[v]||0)+1; }); wd = formatCollectiveOptionDistribution(cnts, fd.correctAnswerMap[item.scoreHeader]); }
             html += '<tr><td>' + renderCollectiveGroupQuestionLink(groupContextId, t) + '</td><td>' + escapeHtml(item.scoreHeader||'') + '</td><td>' + (scores.length?avg.toFixed(2):'-') + '</td><td>' + (scores.length?Math.max.apply(null,scores):'-') + '</td><td>' + (scores.length?Math.min.apply(null,scores):'-') + '</td><td>' + wd + '</td><td>' + (rate==='-'?'-':rate+'%') + '</td></tr>';
         });
-        html += '</tbody></table></div>';
+        html += '</tbody></table></div></div>';
     });
     res.innerHTML = html;
     bindCollectiveGroupQuestionLinks(res);
