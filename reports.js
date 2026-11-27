@@ -572,7 +572,7 @@ function renderStudentReadableReport(studentName, thresholdVal) {
     html.push('<div id="studentReportWeakCompareChart" class="sr-chart sr-chart-wide"></div>');
     html.push('</div>');
 
-    html.push('<div class="sr-section" data-report-list-image="weak-items">' + renderReportListImageHeading('五、薄弱小题明细清单', !weakItems.length));
+    html.push('<div class="sr-section" data-report-list-image="weak-items">' + renderReportListImageHeading('五、薄弱小题明细清单', {disabled:!weakItems.length, allowDownload:true}));
     if (weakItems.length) {
         html.push('<table class="sr-table"><thead><tr><th>科目</th><th>题号/模块</th><th>得分</th><th>个人得分率</th><th>全体该题得分率</th><th>与全体对比</th><th>学生答案</th><th>正确答案</th></tr></thead><tbody>');
         weakItems.slice(0, 36).forEach(function(w) {
@@ -1295,10 +1295,10 @@ function buildClassReportLeaderboards(students, currentData, batch, compareBatch
     });
 }
 
-function renderReportListImageHeading(title, disabled = false) {
+function renderReportListImageHeading(title, {disabled = false, allowDownload = false, heading = 'h3'} = {}) {
     const state = disabled ? ' disabled' : '';
-    return `<div class="sr-list-image-heading"><h3>${title}</h3><div class="sr-class-leaderboard-actions">
-        <button type="button" class="image-action-btn" onclick="exportReportListImage(this)"${state}>导出 PNG</button>
+    return `<div class="sr-list-image-heading"><${heading}>${title}</${heading}><div class="sr-class-leaderboard-actions">
+        ${allowDownload ? `<button type="button" class="image-action-btn" onclick="exportReportListImage(this)"${state}>导出 PNG</button>` : ''}
         <button type="button" class="image-action-btn" onclick="exportReportListImage(this, true)"${state}>复制图片</button>
     </div></div>`;
 }
@@ -1326,10 +1326,11 @@ function drawReportListImage(section, title, caption) {
         lines.push(line);
         return lines;
     };
+    const weights = {
+        'weak-items':[.085, .125, .075, .115, .14, .16, .15, .15],
+        'priority-students':[.16, .12, .20, .20, .16, .16]
+    }[section.dataset.reportListImage] || [.16, .08, .76];
     const plans = tables.map(table => {
-        const weights = section.dataset.reportListImage === 'weak-items'
-            ? [.085, .125, .075, .115, .14, .16, .15, .15]
-            : [.16, .08, .76];
         const columns = weights.map(weight => weight * contentWidth);
         const rows = [...table.rows].map(row => {
             const header = row.parentElement === table.tHead;
@@ -1394,7 +1395,7 @@ function drawReportListImage(section, title, caption) {
 async function exportReportListImage(button, copy = false) {
     if (button.disabled) return;
     const section = button.closest('[data-report-list-image]');
-    const title = section.querySelector('h3').textContent.trim();
+    const title = section.querySelector('.sr-list-image-heading :is(h3, h4)').textContent.trim();
     const report = section.closest('.student-readable-report, .comp-readable-report');
     const reportName = report.querySelector('h2')?.textContent.trim() || '';
     const metadata = [...report.querySelectorAll('.sr-meta > div, .cr-meta > div')]
@@ -1967,9 +1968,14 @@ function renderSubjectTeachingReadableReport(classNames, subjectName, compareBat
     html.push('<div id="subjectReportItemRateChart" class="sr-chart sr-chart-wide"></div>');
     html.push('<div id="subjectReportFlowChart" class="sr-chart sr-chart-wide"></div>');
     html.push('</div></div>');
-    html.push('<div class="sr-section" data-report-list-image="subject-flow">' + renderReportListImageHeading('三、分层结构与流转名单'));
-    html.push(renderSubjectGradeNameTable(rows, subjectPop, tierMode));
-    html.push(renderSubjectFlowNameTable(flow));
+    html.push('<div class="sr-section"><h3>三、分层结构与流转名单</h3>');
+    const tierTable = renderSubjectGradeNameTable(rows, subjectPop, tierMode);
+    html.push('<div data-report-list-image="subject-tier">'
+        + renderReportListImageHeading('分层结构', {heading:'h4', disabled:!tierTable.startsWith('<table')})
+        + tierTable + '</div>');
+    html.push('<div data-report-list-image="subject-flow" style="margin-top:12px;">'
+        + renderReportListImageHeading('流转名单', {heading:'h4'})
+        + renderSubjectFlowNameTable(flow) + '</div>');
     html.push('</div>');
     html.push('<div class="sr-section"><h3>四、错题归因：选择题答案分布</h3>');
     html.push('<div id="subjectReportChoiceChart" class="sr-chart sr-chart-wide"></div>');
@@ -2458,7 +2464,9 @@ function renderProgressReadableReport() {
     html.push('<div id="progressReportClassChart" class="sr-chart sr-chart-wide"></div>');
     html.push('</div></div>');
     window.progressReadableDetailMap = {};
-    html.push('<div class="sr-section"><h3>三、重点学生明细</h3><table class="sr-table"><thead><tr><th>类型</th><th>班级</th><th>姓名</th><th>对照分/本次分</th><th>分数变化</th><th>名次变化</th></tr></thead><tbody>');
+    html.push('<div class="sr-section" data-report-list-image="priority-students">'
+        + renderReportListImageHeading('三、重点学生明细', {disabled:!rankImproved.length && !rankDeclined.length})
+        + '<table class="sr-table"><thead><tr><th>类型</th><th>班级</th><th>姓名</th><th>对照分/本次分</th><th>分数变化</th><th>名次变化</th></tr></thead><tbody>');
     rankImproved.slice(0, 10).forEach(function(r){ html.push(renderProgressReadableRow('名次进步', r)); });
     rankDeclined.slice(0, 10).forEach(function(r){ html.push(renderProgressReadableRow('名次退步', r)); });
     html.push('</tbody></table></div></div>');
