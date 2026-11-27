@@ -1074,7 +1074,9 @@ async function copyClassDiffRankPng() {
         const dataUrl = chart.getDataURL({type:'svg', backgroundColor:'#ffffff', excludeComponents:['tooltip']});
         if (!dataUrl?.startsWith('data:image/svg+xml')) throw new Error('暂时无法生成柱状图');
         const svg = decodeURIComponent(dataUrl.slice(dataUrl.indexOf(',') + 1));
-        png = renderClassDiffSvgPng(svg, 3);
+        // Bound the copied bitmap so it fits comfortably on a PowerPoint slide.
+        const scale = Math.min(720 / chart.getWidth(), 420 / chart.getHeight());
+        png = renderClassDiffSvgPng(svg, scale);
         // 在点击产生的用户激活期间提交写入，PNG 可以随后生成。
         await navigator.clipboard.write([new ClipboardItem({'image/png': png})]);
         showToast('已复制 PNG，可按 Ctrl+V 粘贴', 'success');
